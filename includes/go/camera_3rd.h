@@ -68,6 +68,34 @@ public:
         Up = glm::normalize(glm::cross(Right, Front));
     }
 
+    void SetIsometricView(glm::vec3 targetPosition, float distance = 10.0f)
+    {
+        // Define common isometric angles (e.g., 45 degrees horizontal, 30 degrees vertical)
+        // You can adjust these values for your desired look
+        float isoYaw = glm::radians(-135.0f); // Looking towards -X, -Z (typical isometric)
+        float isoPitch = glm::radians(-30.0f); // Looking down
+
+        // Calculate a direction vector based on these angles
+        glm::vec3 isoDirection;
+        isoDirection.x = cos(isoYaw) * cos(isoPitch);
+        isoDirection.y = sin(isoPitch);
+        isoDirection.z = sin(isoYaw) * cos(isoPitch);
+        isoDirection = glm::normalize(isoDirection);
+
+        // Position the camera 'distance' units away from the target in the isoDirection
+        Position = targetPosition - isoDirection * distance;
+
+        // Make the camera look directly at the target
+        Front = glm::normalize(targetPosition - Position);
+        Right = glm::normalize(glm::cross(Front, WorldUp));
+        Up = glm::normalize(glm::cross(Right, Front));
+
+        // Optionally, disable mouse control or set Yaw/Pitch to fixed values if needed
+        // For a truly fixed view, you wouldn't update Yaw/Pitch with mouse
+        Yaw = glm::degrees(isoYaw);
+        Pitch = glm::degrees(isoPitch);
+    }
+
     // Processes mouse movement to orbit the camera
     void ProcessMouseMovement(float xoffset, float yoffset)
     {
