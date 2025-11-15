@@ -53,7 +53,7 @@ public:
 	}
 
     // THIS IS THE 4-ARGUMENT ProcessKeyboard METHOD
-    void ProcessKeyboard(const glm::vec3& camFront, const glm::vec3& camRight, Camera_Movement direction, float deltaTime) {
+    void ProcessKeyboard(const glm::vec3& camFront, const glm::vec3& camRight, std::vector<int> direction, float deltaTime) {
         float velocity = PLAYER_SPEED;
         glm::vec3 moveDirection(0.0f);
 
@@ -61,13 +61,13 @@ public:
         glm::vec3 camForwardHorizontal = glm::normalize(glm::vec3(camFront.x, 0.0f, camFront.z));
         glm::vec3 camRightHorizontal = glm::normalize(glm::vec3(camRight.x, 0.0f, camRight.z));
 
-        if (direction == FORWARD)
+        if (direction[0] == 1)
             moveDirection += camForwardHorizontal;
-        if (direction == BACKWARD)
-            moveDirection -= camForwardHorizontal;
-        if (direction == LEFT)
+        if (direction[1] == 1)
             moveDirection -= camRightHorizontal;
-        if (direction == RIGHT)
+        if (direction[2] == 1)
+            moveDirection -= camForwardHorizontal;
+        if (direction[3] == 1)
             moveDirection += camRightHorizontal;
 
         // Update velocity

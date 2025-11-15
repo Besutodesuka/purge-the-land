@@ -200,16 +200,16 @@ void processInput(GLFWwindow* window, Player* player, Camera* camera, float delt
 	
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
-
-    Camera_Movement direction = NONE;
+	std::vector<int> direction = {0,0,0,0};
+    //Camera_Movement direction = NONE;
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        direction = FORWARD;
-    else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        direction = BACKWARD;
-    else if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        direction = LEFT;
-    else if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        direction = RIGHT;
+        direction[0] = 1;
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        direction[1] = 1;
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        direction[2] = 1;
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        direction[3] = 1;
 
     player->ProcessKeyboard(camera->Front, camera->Right, direction, deltaTime);
 
@@ -255,12 +255,12 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
     // get radians from center
     // trans form model (rotate with z-axis)
 
-     camera.ProcessMouseMovement(xoffset, yoffset);
+     //camera.ProcessMouseMovement(xoffset, yoffset);
 }
 
 // scroll_callback (NO CHANGES)
 // ---------------------------------------------------------------------------------------------
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
-    camera.ProcessMouseScroll(static_cast<float>(yoffset));
+    //camera.ProcessMouseScroll(static_cast<float>(yoffset));
 }
