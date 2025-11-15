@@ -48,6 +48,10 @@ public:
         return Position + glm::vec3(0.0f, AABBHeightOffset, 0.0f);
     }
 
+    void SetDirectionByMouse(float angle) {
+		//RotationY = camera.CalculateYawFromMouse(mouseX, mouseY);
+	}
+
     // THIS IS THE 4-ARGUMENT ProcessKeyboard METHOD
     void ProcessKeyboard(const glm::vec3& camFront, const glm::vec3& camRight, Camera_Movement direction, float deltaTime) {
         float velocity = PLAYER_SPEED;
