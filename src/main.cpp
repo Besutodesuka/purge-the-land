@@ -24,8 +24,8 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow* window, Player* player, Camera* camera, float deltaTime);
 
 // settings
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
+const unsigned int SCR_WIDTH = 1980;
+const unsigned int SCR_HEIGHT = 1080;
 
 // camera
 // We now initialize our new camera. All logic is inside the class.
@@ -41,8 +41,6 @@ float lastFrame = 0.0f;
 
 // Scene collision boxes
 std::vector<AABB> levelColliders;
-
-
 
 int main()
 {
@@ -73,20 +71,20 @@ int main()
     // Load models
     // We follow the plan: one visual model, one collision model
     Model playerModel(FileSystem::getPath("resources/objects/rat/cartoon-low-poly-rat-pack/rat.obj"));
-    Model visualModel(FileSystem::getPath("resources/objects/Sims4_TinyLivingPack_1.0/exported/map/Sims4_TinyLivingPack_1.0.obj"));
-    // *** IMPORTANT ***
-    // You MUST create and export a "collision.obj" from Blender
-    Model collisionModel(FileSystem::getPath("resources/objects/Sims4_TinyLivingPack_1.0/exported/hitbox/hitbox.obj"));
+    Model visualModel(FileSystem::getPath("resources/objects/map/world/pine_forest.obj"));
+    Model collisionModel(FileSystem::getPath("resources/objects/map/world/hitbox_map.obj")); 
 
     // Create the Player
-    glm::vec3 playerStartPos(0.0f, 25.0f, 0.0f);
+    glm::vec3 playerStartPos(0.0f, 40.0f, 0.0f);
     glm::vec3 playerBoxSize(0.2f, 0.35f, 0.4f); // get collision box from AABB function/static for optimization maybe visualize them to see if it is ok or not
     float playerModelScale = 0.2f;
     player = Player(&playerModel, playerStartPos, playerBoxSize, playerModelScale);
+	Model GroundModel(FileSystem::getPath("resources/objects/map/world/ground/ground.obj"));
+	player.SetGroundModel(&GroundModel);
     
     // Populate the level colliders vector from the invisible collision model
     std::cout << "Building collision geometry..." << std::endl;
-    for (Mesh& mesh : collisionModel.meshes)
+   for (Mesh& mesh : collisionModel.meshes)
     {
         glm::vec3 minAABB = glm::vec3(std::numeric_limits<float>::max());
         glm::vec3 maxAABB = glm::vec3(std::numeric_limits<float>::lowest());
@@ -99,17 +97,10 @@ int main()
             maxAABB.x = std::max(maxAABB.x, vertex.Position.x);
             maxAABB.y = std::max(maxAABB.y, vertex.Position.y);
             maxAABB.z = std::max(maxAABB.z, vertex.Position.z);
-        }
-        levelColliders.push_back(AABB(minAABB, maxAABB));
+    }
+    levelColliders.push_back(AABB(minAABB, maxAABB));
     }
     std::cout << "Finished building collision geometry..." << std::endl;
-
-
-    
-
-    
-    std::cout << "/*Player created. Entering main loop*/..." << std::endl;
-
 
     // render loop
     // -----------
@@ -128,7 +119,7 @@ int main()
 
 		// Update camera position based on player
         glm::vec3 cameraTarget = player.GetBoxCenter(); // Follow center of collision box
-        camera.SetIsometricView(cameraTarget, 2.0f); // Initial isometric view
+        camera.SetIsometricView(cameraTarget, 3.0f); // Initial isometric view
 
         // --- Third-Person Camera Collision Logic (from your code) ---
         // 1. Define the "target" (player's head/center)
@@ -174,10 +165,10 @@ int main()
         //model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)); 
         ourShader.setMat4("model", model);
         visualModel.Draw(ourShader);
+		// GroundModel.Draw(ourShader);
 
         // Render the player
         player.Draw(ourShader);
-
 
         // glfw: swap buffers and poll IO events
         glfwSwapBuffers(window);

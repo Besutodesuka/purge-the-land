@@ -31,6 +31,7 @@ public:
     // Model
     Model* PlayerModel;   // Pointer to the loaded rat model
     float ModelScale;
+    TerrainCollider GroundModel;
 
     // THIS IS THE 4-ARGUMENT CONSTRUCTOR
     Player(Model* model, glm::vec3 startPos, glm::vec3 boxSize, float modelScale)
@@ -46,6 +47,17 @@ public:
     glm::vec3 GetBoxCenter() {
         // The box center is the player's position (at the feet) + half the box height
         return Position + glm::vec3(0.0f, AABBHeightOffset, 0.0f);
+    }
+
+    void SetGroundModel(Model* model) {
+        std::vector<Vertex> myLoadedVertices = model->meshes[0].vertices;
+        std::vector<glm::vec3> collisionPositions;
+        collisionPositions.reserve(myLoadedVertices.size());
+        for (const auto& v : myLoadedVertices) {
+            // IF your Vertex uses glm::vec3 Position;
+            collisionPositions.push_back(v.Position);
+        }
+        GroundModel.buildFromMesh(collisionPositions);
     }
 
     void SetDirectionByMouse(float angle) {
@@ -109,27 +121,36 @@ public:
         IsGrounded = false;
         std::cout << "Player at y..." << Position.y << std::endl;
 
-        for (const AABB& levelBox : levelColliders) {
-            if (CheckCollision(CollisionBox, levelBox)) {
-                // We have a Y-collision
-                if (Velocity.y < 0) { // Moving down
-                    // Hit the floor
-                    // Set player *base* (Position.y) to the top of the box
-                    Position.y = levelBox.max.y;
-                    Velocity.y = 0.0f;
-                    IsGrounded = true;
+        if (GroundModel.isBuilt()) {
+            float groundHeight = GroundModel.getExactHeightAt(Position);
+            if (Position.y < groundHeight) {
+                Position.y = groundHeight;
+                Velocity.y = 0.0f;
+                IsGrounded = true;
+			}
+        }
+        else {
+            for (const AABB& levelBox : levelColliders) {
+                if (CheckCollision(CollisionBox, levelBox)) {
+                    // We have a Y-collision
+                    if (Velocity.y < 0) { // Moving down
+                        // Hit the floor
+                        // Set player *base* (Position.y) to the top of the box
+                        Position.y = levelBox.max.y;
+                        Velocity.y = 0.0f;
+                        IsGrounded = true;
+                    }
+                    else if (Velocity.y > 0) { // Moving up
+                        // Hit a ceiling
+                        // Set player *base* (Position.y) to bottom of box minus box height
+                        Position.y = levelBox.min.y - AABBSize.y;
+                        Velocity.y = 0.0f;
+                    }
+                    // Update box position after correction
+                    CollisionBox.Update(GetBoxCenter(), AABBSize);
                 }
-                else if (Velocity.y > 0) { // Moving up
-                    // Hit a ceiling
-                    // Set player *base* (Position.y) to bottom of box minus box height
-                    Position.y = levelBox.min.y - AABBSize.y;
-                    Velocity.y = 0.0f;
-                }
-                // Update box position after correction
-                CollisionBox.Update(GetBoxCenter(), AABBSize);
             }
         }
-
         // --- X/Z-AXIS COLLISION ---
         Position.x += Velocity.x * deltaTime;
         Position.z += Velocity.z * deltaTime;
