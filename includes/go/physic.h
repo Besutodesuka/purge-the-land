@@ -1,5 +1,5 @@
-#ifndef PHYSICS_H
-#define PHYSICS_H
+#ifndef PHYSIC_H
+#define PHYSIC_H
 
 #include <glm/glm.hpp>
 #include <algorithm> // for std::min/max
