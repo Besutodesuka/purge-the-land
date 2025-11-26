@@ -222,41 +222,47 @@ public:
     }
 
     // --- STEP 2: COLLISION CHECK ---
+    // --- FIX IS HERE ---
     float getExactHeightAt(const glm::vec3& position) {
-        // 1. Convert World Coordinates to Grid Coordinates
+        // 1. Convert World Coordinates to Grid Coordinates (Float)
         float relativeX = position.x - minX;
         float relativeZ = position.z - minZ;
 
-        int gridX = (int)(relativeX / quadWidth);
-        int gridZ = (int)(relativeZ / quadHeight);
+        float fGridX = relativeX / quadWidth;
+        float fGridZ = relativeZ / quadHeight;
 
-        // 2. Boundary Check
+        // 2. Use FLOOR to correctly handle negative numbers (Coordinate Mapping Fix)
+        int gridX = (int)std::floor(fGridX);
+        int gridZ = (int)std::floor(fGridZ);
+
+        // 3. Boundary Check (with Clamping logic for edges)
         if (gridX < 0 || gridX >= numCols - 1 || gridZ < 0 || gridZ >= numRows - 1) {
             return -std::numeric_limits<float>::infinity();
         }
 
-        // 3. Get fractional position
-        float xCoord = (relativeX / quadWidth) - gridX;
-        float zCoord = (relativeZ / quadHeight) - gridZ;
+        // 4. Get fractional position [0.0, 1.0] within the cell
+        float xCoord = fGridX - (float)gridX;
+        float zCoord = fGridZ - (float)gridZ;
 
-        // 4. Retrieve heights
+        // 5. Retrieve heights for the quad
         float h1 = heightMap[gridZ * numCols + gridX];             // Top Left
         float h2 = heightMap[gridZ * numCols + (gridX + 1)];       // Top Right
         float h3 = heightMap[(gridZ + 1) * numCols + gridX];       // Bottom Left
         float h4 = heightMap[(gridZ + 1) * numCols + (gridX + 1)]; // Bottom Right
 
-        // 5. Determine triangle and interpolate
+        // 6. Barycentric Interpolation
         float finalHeight;
-
         if (xCoord <= (1.0f - zCoord)) {
-            // Top-Left Triangle
+            // Triangle 1 (Top Left)
+            // p1(0,0), p2(1,0), p3(0,1) -> matching indices h1, h2, h3
             glm::vec3 p1(0, h1, 0);
             glm::vec3 p2(1, h2, 0);
             glm::vec3 p3(0, h3, 1);
             finalHeight = barycentricHeight(p1, p2, p3, xCoord, zCoord);
         }
         else {
-            // Bottom-Right Triangle
+            // Triangle 2 (Bottom Right)
+            // p1(1,0), p2(1,1), p3(0,1) -> matching indices h2, h4, h3
             glm::vec3 p1(1, h2, 0);
             glm::vec3 p2(1, h4, 1);
             glm::vec3 p3(0, h3, 1);

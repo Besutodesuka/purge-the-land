@@ -71,114 +71,151 @@ public:
 			m_Scales.push_back(data);
 		}
 	}
-	
+
+	// This method updates the bone's internal local transform, typically used for non-blended animation
 	void Update(float animationTime)
 	{
-		glm::vec3 tmp;
-		glm::quat tmpR;
-		glm::mat4 translation = InterpolatePosition(animationTime, tmp);
-		glm::mat4 rotation = InterpolateRotation(animationTime, tmpR);
-		glm::mat4 scale = InterpolateScaling(animationTime, tmp);
+		glm::mat4 translation = InterpolatePosition(animationTime);
+		glm::mat4 rotation = InterpolateRotation(animationTime);
+		glm::mat4 scale = InterpolateScaling(animationTime);
 		m_LocalTransform = translation * rotation * scale;
 	}
+
+    // New method to get the animated local transform matrix directly, useful for blending
+    glm::mat4 GetAnimatedTransform(float animationTime)
+    {
+        glm::mat4 translation = InterpolatePosition(animationTime);
+        glm::mat4 rotation = InterpolateRotation(animationTime);
+        glm::mat4 scale = InterpolateScaling(animationTime);
+        return translation * rotation * scale;
+    }
+
+
 	glm::mat4 GetLocalTransform() { return m_LocalTransform; }
 	std::string GetBoneName() const { return m_Name; }
 	int GetBoneID() { return m_ID; }
-	
 
 
-	int GetPositionIndex(float animationTime)
-	{
-		for (int index = 0; index < m_NumPositions - 1; ++index)
-		{
-			if (animationTime < m_Positions[index + 1].timeStamp)
-				return index;
-		}
-		assert(0);
-	}
+// Made public for easier access in Animator::UpdateBlend
+// private: // Remove or comment out this line
+    int GetPositionIndex(float animationTime)
+    {
+        for (int index = 0; index < m_NumPositions - 1; ++index)
+        {
+            if (animationTime < m_Positions[index + 1].timeStamp)
+                return index;
+        }
+        // Handle case for single keyframe or end of animation more gracefully
+        // For looping animations, this assert might fire near the end if animationTime
+        // is exactly at or slightly above the last keyframe's time.
+        // Returning the last index or 0 could be an alternative.
+        if (m_NumPositions > 0) return m_NumPositions - 1;
+        return 0; // Fallback
+    }
 
-	int GetRotationIndex(float animationTime)
-	{
-		for (int index = 0; index < m_NumRotations - 1; ++index)
-		{
-			if (animationTime < m_Rotations[index + 1].timeStamp)
-				return index;
-		}
-		assert(0);
-	}
+    int GetRotationIndex(float animationTime)
+    {
+        for (int index = 0; index < m_NumRotations - 1; ++index)
+        {
+            if (animationTime < m_Rotations[index + 1].timeStamp)
+                return index;
+        }
+        if (m_NumRotations > 0) return m_NumRotations - 1;
+        return 0; // Fallback
+    }
 
-	int GetScaleIndex(float animationTime)
-	{
-		for (int index = 0; index < m_NumScalings - 1; ++index)
-		{
-			if (animationTime < m_Scales[index + 1].timeStamp)
-				return index;
-		}
-		assert(0);
-	}
-
-
-//private:
+    int GetScaleIndex(float animationTime)
+    {
+        for (int index = 0; index < m_NumScalings - 1; ++index)
+        {
+            if (animationTime < m_Scales[index + 1].timeStamp)
+                return index;
+        }
+        if (m_NumScalings > 0) return m_NumScalings - 1;
+        return 0; // Fallback
+    }
 
 	float GetScaleFactor(float lastTimeStamp, float nextTimeStamp, float animationTime)
 	{
 		float scaleFactor = 0.0f;
 		float midWayLength = animationTime - lastTimeStamp;
 		float framesDiff = nextTimeStamp - lastTimeStamp;
+        if (framesDiff == 0) return 0.0f; // Avoid division by zero
 		scaleFactor = midWayLength / framesDiff;
 		return scaleFactor;
 	}
 
-	glm::mat4 InterpolatePosition(float animationTime, glm::vec3 &finalPos)
-	{
-		if (1 == m_NumPositions)
-			return glm::translate(glm::mat4(1.0f), m_Positions[0].position);
+    // Simplified interpolation methods to directly return glm::mat4
+    glm::mat4 InterpolatePosition(float animationTime)
+    {
+        if (1 == m_NumPositions)
+            return glm::translate(glm::mat4(1.0f), m_Positions[0].position);
 
-		int p0Index = GetPositionIndex(animationTime);
-		int p1Index = p0Index + 1;
-		float scaleFactor = GetScaleFactor(m_Positions[p0Index].timeStamp,
-			m_Positions[p1Index].timeStamp, animationTime);
-		glm::vec3 finalPosition = glm::mix(m_Positions[p0Index].position, m_Positions[p1Index].position
-			, scaleFactor);
-		finalPos = finalPosition;
-		return glm::translate(glm::mat4(1.0f), finalPosition);
-	}
+        int p0Index = GetPositionIndex(animationTime);
+        int p1Index = p0Index + 1;
+        float scaleFactor = GetScaleFactor(m_Positions[p0Index].timeStamp,
+            m_Positions[p1Index].timeStamp, animationTime);
+        glm::vec3 finalPosition = glm::mix(m_Positions[p0Index].position, m_Positions[p1Index].position, scaleFactor);
+        return glm::translate(glm::mat4(1.0f), finalPosition);
+    }
 
-	glm::mat4 InterpolateRotation(float animationTime, glm::quat &finalQuat)
-	{
-		if (1 == m_NumRotations)
-		{
-			auto rotation = glm::normalize(m_Rotations[0].orientation);
-			return glm::toMat4(rotation);
-		}
+    glm::mat4 InterpolateRotation(float animationTime)
+    {
+        if (1 == m_NumRotations)
+        {
+            auto rotation = glm::normalize(m_Rotations[0].orientation);
+            return glm::toMat4(rotation);
+        }
 
-		int p0Index = GetRotationIndex(animationTime);
-		int p1Index = p0Index + 1;
-		float scaleFactor = GetScaleFactor(m_Rotations[p0Index].timeStamp,
-			m_Rotations[p1Index].timeStamp, animationTime);
-		glm::quat finalRotation = glm::slerp(m_Rotations[p0Index].orientation, m_Rotations[p1Index].orientation
-			, scaleFactor);
-		finalRotation = glm::normalize(finalRotation);
-		finalQuat = finalRotation;
-		return glm::toMat4(finalRotation);
+        int p0Index = GetRotationIndex(animationTime);
+        int p1Index = p0Index + 1;
+        float scaleFactor = GetScaleFactor(m_Rotations[p0Index].timeStamp,
+            m_Rotations[p1Index].timeStamp, animationTime);
+        glm::quat finalRotation = glm::slerp(m_Rotations[p0Index].orientation, m_Rotations[p1Index].orientation, scaleFactor);
+        finalRotation = glm::normalize(finalRotation);
+        return glm::toMat4(finalRotation);
+    }
 
-	}
+    glm::mat4 InterpolateScaling(float animationTime)
+    {
+        if (1 == m_NumScalings)
+            return glm::scale(glm::mat4(1.0f), m_Scales[0].scale);
 
-	glm::mat4 InterpolateScaling(float animationTime, glm::vec3 &finalScaling)
-	{
-		if (1 == m_NumScalings)
-			return glm::scale(glm::mat4(1.0f), m_Scales[0].scale);
+        int p0Index = GetScaleIndex(animationTime);
+        int p1Index = p0Index + 1;
+        float scaleFactor = GetScaleFactor(m_Scales[p0Index].timeStamp,
+            m_Scales[p1Index].timeStamp, animationTime);
+        glm::vec3 finalScale = glm::mix(m_Scales[p0Index].scale, m_Scales[p1Index].scale, scaleFactor);
+        return glm::scale(glm::mat4(1.0f), finalScale);
+    }
 
-		int p0Index = GetScaleIndex(animationTime);
-		int p1Index = p0Index + 1;
-		float scaleFactor = GetScaleFactor(m_Scales[p0Index].timeStamp,
-			m_Scales[p1Index].timeStamp, animationTime);
-		glm::vec3 finalScale = glm::mix(m_Scales[p0Index].scale, m_Scales[p1Index].scale
-			, scaleFactor);
-		finalScaling = finalScale;
-		return glm::scale(glm::mat4(1.0f), finalScale);
-	}
+    // Helper methods to get interpolated components directly (made public for Animator)
+    glm::vec3 GetInterpolatedPosition(float animationTime) {
+        if (1 == m_NumPositions) return m_Positions[0].position;
+        int p0Index = GetPositionIndex(animationTime);
+        int p1Index = p0Index + 1;
+        float scaleFactor = GetScaleFactor(m_Positions[p0Index].timeStamp, m_Positions[p1Index].timeStamp, animationTime);
+        return glm::mix(m_Positions[p0Index].position, m_Positions[p1Index].position, scaleFactor);
+    }
 
+    glm::quat GetInterpolatedRotation(float animationTime) {
+        if (1 == m_NumRotations) return glm::normalize(m_Rotations[0].orientation);
+        int p0Index = GetRotationIndex(animationTime);
+        int p1Index = p0Index + 1;
+        float scaleFactor = GetScaleFactor(m_Rotations[p0Index].timeStamp, m_Rotations[p1Index].timeStamp, animationTime);
+        return glm::normalize(glm::slerp(m_Rotations[p0Index].orientation, m_Rotations[p1Index].orientation, scaleFactor));
+    }
+
+    glm::vec3 GetInterpolatedScaling(float animationTime) {
+        if (1 == m_NumScalings) return m_Scales[0].scale;
+        int p0Index = GetScaleIndex(animationTime);
+        int p1Index = p0Index + 1;
+        float scaleFactor = GetScaleFactor(m_Scales[p0Index].timeStamp, m_Scales[p1Index].timeStamp, animationTime);
+        return glm::mix(m_Scales[p0Index].scale, m_Scales[p1Index].scale, scaleFactor);
+    }
+
+
+private: // The actual member variables remain private
 	std::vector<KeyPosition> m_Positions;
 	std::vector<KeyRotation> m_Rotations;
 	std::vector<KeyScale> m_Scales;
@@ -190,4 +227,3 @@ public:
 	std::string m_Name;
 	int m_ID;
 };
-
