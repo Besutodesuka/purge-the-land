@@ -26,46 +26,7 @@ public:
 	{
 		Assimp::Importer importer;
 		const aiScene* scene = importer.ReadFile(animationPath, aiProcess_Triangulate);
-		// Check 1: Did the file load at all? (This is a fatal file-level error)
-		if (!scene)
-		{
-			std::cerr << "ERROR::ASSIMP (ReadFile failed): " << importer.GetErrorString() << std::endl;
-			assert(false); // Stop if the file is corrupt or unreadable
-			return;
-		}
-
-		// Check 2: Does it actually contain an animation? (This is our *new* fatal error)
-		// We *must* check this before accessing scene->mAnimations[0]
-		if (scene->mNumAnimations == 0)
-		{
-			std::cerr << "ERROR::ASSIMP (No animations found in file): " << animationPath << std::endl;
-			assert(false); // Stop if the file has no animations
-			return;
-		}
-
-		// --- Non-Fatal Warnings ---
-		// If we get here, the file is usable!
-		// We can just print warnings for incomplete flags but NOT assert.
-
-		if (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE)
-		{
-			// It's incomplete (missing textures, etc.), but we don't care.
-			// This is just a warning, not an error.
-			std::cout << "WARNING::ASSIMP (Scene Incomplete): " << animationPath
-				<< " (This is normal and OK for animation-only files)." << std::endl;
-		}
-
-		if (!scene->mRootNode)
-		{
-			// It has no root node (no model), which is also fine.
-			std::cout << "WARNING::ASSIMP (No Root Node): " << animationPath
-				<< " (This is also normal for animation-only files.)" << std::endl;
-		}
-
-		// --- SUCCESS! ---
-		// If your code reaches this point, the scene is valid AND has animations.
-		// Your original code can now run safely.
-		std::cout << "Successfully loaded animation from: " << animationPath << std::endl;
+		assert(scene && scene->mRootNode);
 		auto animation = scene->mAnimations[0];
 		m_Duration = animation->mDuration;
 		m_TicksPerSecond = animation->mTicksPerSecond;

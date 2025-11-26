@@ -1,7 +1,3 @@
-// Matt edit the code to support cross fade blending of 2 clips
-// 11/2/2024
-
-
 #pragma once
 
 #include <glm/glm.hpp>
@@ -18,9 +14,10 @@ public:
 	Animator(Animation* animation)
 	{
 		m_CurrentTime = 0.0;
+		m_CurrentTime2 = 0.0;
 		m_CurrentAnimation = animation;
 		m_CurrentAnimation2 = NULL;
-		m_blendAmount = 0;
+		m_blendAmount = 0.0f;
 
 		m_FinalBoneMatrices.reserve(100);
 
@@ -33,15 +30,18 @@ public:
 		m_DeltaTime = dt;
 		if (m_CurrentAnimation)
 		{
+            // Update time for the primary animation
 			m_CurrentTime += m_CurrentAnimation->GetTicksPerSecond() * dt;
 			m_CurrentTime = fmod(m_CurrentTime, m_CurrentAnimation->GetDuration());
 
+            // Update time for the secondary animation only if it's active
 			if (m_CurrentAnimation2)
 			{
 				m_CurrentTime2 += m_CurrentAnimation2->GetTicksPerSecond() * dt;
 				m_CurrentTime2 = fmod(m_CurrentTime2, m_CurrentAnimation2->GetDuration());
 			}
 
+            // Calculate bone transforms for the current frame (will handle blend internally)
 			CalculateBoneTransform(&m_CurrentAnimation->GetRootNode(), glm::mat4(1.0f));
 		}
 	}
@@ -55,52 +55,61 @@ public:
 		m_blendAmount = blend;
 	}
 
-	glm::mat4 UpdateBlend(Bone* Bone1, Bone* Bone2) {
-		glm::vec3 bonePos1, bonePos2, finalPos;
-		glm::vec3 boneScale1, boneScale2, finalScale;
-		glm::quat boneRot1, boneRot2, finalRot;
+    // UpdateBlend now uses the Bone's public GetInterpolatedX methods
+	glm::mat4 UpdateBlend(Bone* Bone1, Bone* Bone2, float time1, float time2, float blend) {
+		// Get interpolated components directly from each bone
+		glm::vec3 bonePos1 = Bone1->GetInterpolatedPosition(time1);
+		glm::vec3 bonePos2 = Bone2->GetInterpolatedPosition(time2);
+		glm::quat boneRot1 = Bone1->GetInterpolatedRotation(time1);
+		glm::quat boneRot2 = Bone2->GetInterpolatedRotation(time2);
+		glm::vec3 boneScale1 = Bone1->GetInterpolatedScaling(time1);
+		glm::vec3 boneScale2 = Bone2->GetInterpolatedScaling(time2);
 
-		Bone1->InterpolatePosition(m_CurrentTime, bonePos1);
-		Bone2->InterpolatePosition(m_CurrentTime2, bonePos2);
-		Bone1->InterpolateRotation(m_CurrentTime, boneRot1);
-		Bone2->InterpolateRotation(m_CurrentTime2, boneRot2);
-		Bone1->InterpolateScaling(m_CurrentTime, boneScale1);
-		Bone2->InterpolateScaling(m_CurrentTime2, boneScale2);
-
-		finalPos = glm::mix(bonePos1, bonePos2, m_blendAmount);
-		finalRot = glm::slerp(boneRot1, boneRot2, m_blendAmount);
+		// Mix the components
+		glm::vec3 finalPos = glm::mix(bonePos1, bonePos2, blend);
+		glm::quat finalRot = glm::slerp(boneRot1, boneRot2, blend);
 		finalRot = glm::normalize(finalRot);
-		finalScale = glm::mix(boneScale1, boneScale2, m_blendAmount);
+		glm::vec3 finalScale = glm::mix(boneScale1, boneScale2, blend);
 
+		// Combine into a single matrix
 		glm::mat4 translation = glm::translate(glm::mat4(1.0f), finalPos);
 		glm::mat4 rotation = glm::toMat4(finalRot);
 		glm::mat4 scale = glm::scale(glm::mat4(1.0f), finalScale);
 
-		glm::mat4 TRS = glm::mat4(1.0f);
-		TRS = translation * rotation * scale;
-		return TRS;
+		return translation * rotation * scale;
 	}
 
 	void CalculateBoneTransform(const AssimpNodeData* node, glm::mat4 parentTransform)
 	{
 		std::string nodeName = node->name;
+		// Initialize nodeTransform with the node's original bind pose transform.
+        // This is important for bones that might not be animated in *any* current animation.
 		glm::mat4 nodeTransform = node->transformation;
 
 		Bone* Bone1 = m_CurrentAnimation->FindBone(nodeName);
-		Bone* Bone2 = NULL;
-		if (m_CurrentAnimation2) {
+		Bone* Bone2 = nullptr;
+
+		// Only look for Bone2 if a secondary animation is set and blending is active
+		if (m_CurrentAnimation2 && m_blendAmount > 0.0f) {
 			Bone2 = m_CurrentAnimation2->FindBone(nodeName);
 		}
 
-		if (Bone1)
+		if (Bone1) // If the bone is animated in the primary animation
 		{
-			Bone1->Update(m_CurrentTime);
-			nodeTransform = Bone1->GetLocalTransform();
-
-			if (Bone2) {
-				nodeTransform = UpdateBlend(Bone1, Bone2);
+            // If we have a second animation bone AND it's found AND we are blending
+			if (Bone2 && m_blendAmount > 0.0f)
+			{
+				// Calculate a blended transformation for this bone
+				nodeTransform = UpdateBlend(Bone1, Bone2, m_CurrentTime, m_CurrentTime2, m_blendAmount);
+			}
+			else // No blending for this bone (either no second animation, or blendAmount is 0)
+			{
+				// Use the primary animation's transform directly
+				nodeTransform = Bone1->GetAnimatedTransform(m_CurrentTime);
 			}
 		}
+        // If Bone1 is nullptr, nodeTransform remains its bind pose, which is correct
+        // for un-animated bones.
 
 		glm::mat4 globalTransformation = parentTransform * nodeTransform;
 
@@ -121,7 +130,7 @@ public:
 		return m_FinalBoneMatrices;
 	}
 
-	//private:
+public: // Keep these public for skeletal_animation.cpp state machine
 	std::vector<glm::mat4> m_FinalBoneMatrices;
 	Animation* m_CurrentAnimation;
 	Animation* m_CurrentAnimation2;

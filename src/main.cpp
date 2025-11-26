@@ -7,7 +7,7 @@
 
 #include <learnopengl/filesystem.h>
 #include <learnopengl/shader_m.h>
-#include <learnopengl/model.h>
+#include <learnopengl/model_animation.h>
 
 // Our new class headers
 #include <go/physic.h>
@@ -16,6 +16,7 @@
 #include <go/ui.h>
 #include <go/arrow.h>
 #include <go/debug_renderer.h>
+#include <go/enemy.h>
 
 #include <iostream>
 #include <vector>
@@ -34,10 +35,11 @@ const unsigned int SCR_HEIGHT = 1080;
 // camera
 // We now initialize our new camera. All logic is inside the class.
 Camera camera(3.0f, glm::vec3(0.0f, 1.0f, 0.0f), -135.0f, 20.0f); // 3.0f is the starting distance
-Player player(nullptr, glm::vec3(0.0f), glm::vec3(0.0f), 1.0f); // Temporary initialization
+Player* player = nullptr; // Temporary initialization
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
+
 Reticle myReticle;
 float sensitivity = 1.0f;
 // timing
@@ -50,6 +52,8 @@ int BowMode = 0; // 0 = idle, 1 = draw, 2 = shoot
 
 // Scene collision boxes
 std::vector<OBB> levelColliders;
+
+EnemyManager enemyManager;
 std::vector<OBB> monsterColliders;
 
 
@@ -73,29 +77,30 @@ int main()
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) { /* ... error check ... */ return -1; }
     // ------------------------------------------------------------------
 
-    stbi_set_flip_vertically_on_load(false); // Most OBJ models need this
+    stbi_set_flip_vertically_on_load(true); // Most OBJ models need this
 	glEnable(GL_DEPTH_TEST);// Enable depth testing ensure rendering order
 
     // Build and compile shaders
     Shader ourShader("1.model_loading.vs", "1.model_loading.fs");
     Shader cursorShader("crosshair.vs", "crosshair.fs");
+    Shader AnimationShader("anim_model.vs", "anim_model.fs");
 
     // Load models
     // We follow the plan: one visual model, one collision model
-    Model playerModel(FileSystem::getPath("resources/objects/rat/cartoon-low-poly-rat-pack/rat.obj"));
+    Model playerModel(FileSystem::getPath("resources/objects/player/Erika Archer With Bow Arrow.dae"));
     Model arrowModel(FileSystem::getPath("resources/objects/arrow/arrow.obj"));
     Model visualModel(FileSystem::getPath("resources/objects/map/map/map/pine_forest.obj"));
-    Model collisionModel(FileSystem::getPath("resources/objects/map/world/hitbox_map.obj")); 
+    //Model collisionModel(FileSystem::getPath("resources/objects/map/world/hitbox_map.obj")); 
 
     // Create the Player
     glm::vec3 playerStartPos(10.0f, 40.0f, 10.0f);
     glm::vec3 playerBoxSize(0.2f, 0.35f, 0.4f); // get collision box from AABB function/static for optimization maybe visualize them to see if it is ok or not
-    float playerModelScale = 0.2f;
-    player = Player(&playerModel, playerStartPos, playerBoxSize, playerModelScale);
+    float playerModelScale = 0.5f;
+    player = new Player(&playerModel, playerStartPos, playerBoxSize, playerModelScale);
 	Model GroundModel(FileSystem::getPath("resources/objects/map/map/map/ground.obj"));
 	Model TargetModel(FileSystem::getPath("resources/objects/target/target.obj"));
-	player.SetGroundModel(&GroundModel);
-	player.SetArrowManager(&arrowModel, 0.01f);
+	player->SetGroundModel(&GroundModel);
+	player->SetArrowManager(&arrowModel, 0.01f);
     
     // // Populate the level colliders vector from the invisible collision model
     // std::cout << "Building collision geometry..." << std::endl;
@@ -160,6 +165,18 @@ int main()
         std::cout << "       Solution: Export your OBJ with 'Split by Objects' or 'Keep Vertex Order'." << std::endl;
     }
 
+    // Spawn 3 enemies at different locations
+    //enemies.emplace_back(&arrowModel, glm::vec3(5.0f, 0.5f, 5.0f), 0.5f, 100.0f);
+    //enemies.emplace_back(&TargetModel, glm::vec3(-5.0f, 0.5f, 5.0f), 10.0f, 100.0f);
+    //enemies.emplace_back(&TargetModel, glm::vec3(0.0f, 0.5f, -8.0f), 15.0f, 150.0f); // Big boss
+
+    // 2. Init Manager
+    enemyManager.Init(&TargetModel);
+
+    // 3. Spawn Enemies (Note the smaller scale!)
+    enemyManager.Spawn(glm::vec3(5.0f, 0.5f, 5.0f), 0.2f, 100.0f);
+    enemyManager.Spawn(glm::vec3(-5.0f, 0.5f, 5.0f), 0.2f, 100.0f);
+    enemyManager.Spawn(glm::vec3(0.0f, 0.5f, -8.0f), 0.3f, 150.0f);
     monsterColliders = GenerateOBBsFromModel(arrowModel, levelMatrix);
 
     debugRenderer.Init();
@@ -173,14 +190,15 @@ int main()
         lastFrame = currentFrame;
 
         // input
-        processInput(window, &player, &camera, deltaTime);
+        processInput(window, player, &camera, deltaTime);
 
         // Update player logic (physics, collision)
-        //player.Update(deltaTime, levelColliders);
-        player.Update(deltaTime, monsterColliders);
+        // player.Update(deltaTime, levelColliders); //TODO: this one is needed but the map needed to be fix first
+        player->Update(deltaTime, monsterColliders);
+        enemyManager.Update(deltaTime, player->arrowManager);
 
 		// Update camera position based on player
-        glm::vec3 cameraTarget = player.GetBoxCenter(); // Follow center of collision box
+        glm::vec3 cameraTarget = player->GetBoxCenter(); // Follow center of collision box
         camera.SetIsometricView(cameraTarget, 5.0f); // Initial isometric view
 
         // render
@@ -195,44 +213,54 @@ int main()
         glm::mat4 view = camera.GetViewMatrix();
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
+        glm::mat4 model = glm::mat4(1.0f);
+        ourShader.setMat4("model", model);
 
         // render the visual level
-        glm::mat4 model = glm::mat4(1.0f);
         //model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)); 
-        ourShader.setMat4("model", model);
-        //visualModel.Draw(ourShader);
+        visualModel.Draw(ourShader);
 		GroundModel.Draw(ourShader);
 
-        model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(-1.0f, -0.25f, 1.0f));
-        model = glm::scale(model, 0.5f*glm::vec3(1.0f, 1.0f, 1.0f));
-        ourShader.setMat4("model", model);
-		TargetModel.Draw(ourShader);
+  //      model = glm::mat4(1.0f);
+		//model = glm::translate(model, glm::vec3(-1.0f, -0.25f, 1.0f));
+  //      model = glm::scale(model, 0.5f*glm::vec3(1.0f, 1.0f, 1.0f));
+  //      ourShader.setMat4("model", model);
+		//TargetModel.Draw(ourShader);
 
-        model = glm::mat4(1.0f);
-        ourShader.setMat4("model", model);
-        player.Draw(ourShader);
         // Draw the yellow circle at the aim target
         // Render the player
-        player.arrowManager.Update(deltaTime, monsterColliders);
-		player.arrowManager.Render(ourShader);
-        // glfw: swap buffers and poll IO events
+        player->arrowManager.Update(deltaTime, monsterColliders);
+		player->arrowManager.Render(ourShader);
+
+        // One line to draw all enemies
+        enemyManager.Render(ourShader);
+        
+        AnimationShader.use();
+        model = glm::mat4(1.0f);
+        AnimationShader.setMat4("model", model);
+        AnimationShader.setMat4("projection", projection);
+        AnimationShader.setMat4("view", view);
+        player->Draw(AnimationShader, false);
+
         cursorShader.use();
         cursorShader.setMat4("view", view);
         cursorShader.setMat4("projection", projection);
         model = glm::mat4(1.0f);
         cursorShader.setMat4("model", model);
-        myReticle.Draw(cursorShader, player.Position + (player.ShootDirection * 10.0f), glm::vec4(1.0f, 1.0f, 0.0f, 0.5f));
+        glm::vec3 flatDir = glm::normalize(glm::vec3(player->ShootDirection.x, 0.0f, player->ShootDirection.z));
+        glm::vec3 reticlePos = player->Position + (flatDir * player->currentAimDist);
+        myReticle.Draw(cursorShader, reticlePos);
+        // One line to draw all Health Bars
+        enemyManager.RenderUI(cursorShader);
 
-        for (const Arrow& a : player.arrowManager.arrows) {
+        //debug hit box
+        for (const Arrow& a : player->arrowManager.arrows) {
             debugRenderer.DrawOBB(a.hitbox, view, projection);
 		}
-        for (const OBB& hitbox : monsterColliders) {
-            debugRenderer.DrawOBB(hitbox, view, projection);
+        for (const auto& enemy : enemyManager.GetEnemies()) {
+            debugRenderer.DrawOBB(enemy.Collider, view, projection);
         }
-        for (const OBB& hitbox : levelColliders) {
-            debugRenderer.DrawOBB(hitbox, view, projection);
-        }
+        
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
@@ -346,7 +374,7 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
 
     //float distPixels = std::sqrt(deltaX * deltaX + deltaY * deltaY);
     //
-    //player.SetDirectionByMouse(angle, distPixels);
+    //player->SetDirectionByMouse(angle, distPixels);
 }
 
 // scroll_callback (NO CHANGES)
