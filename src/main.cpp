@@ -54,7 +54,6 @@ int BowMode = 0; // 0 = idle, 1 = draw, 2 = shoot
 std::vector<OBB> levelColliders;
 
 EnemyManager enemyManager;
-std::vector<OBB> monsterColliders;
 
 
 int main()
@@ -89,7 +88,8 @@ int main()
     // We follow the plan: one visual model, one collision model
     Model playerModel(FileSystem::getPath("resources/objects/player/Erika Archer With Bow Arrow.dae"));
     Model arrowModel(FileSystem::getPath("resources/objects/arrow/arrow.obj"));
-    Model visualModel(FileSystem::getPath("resources/objects/map/map/map/pine_forest.obj"));
+    Model visualModel(FileSystem::getPath("resources/objects/map/map.obj"));
+	Model skyboxModel(FileSystem::getPath("resources/objects/skybox/skybox.obj"));
     //Model collisionModel(FileSystem::getPath("resources/objects/map/world/hitbox_map.obj")); 
 
     // Create the Player
@@ -97,7 +97,7 @@ int main()
     glm::vec3 playerBoxSize(0.2f, 0.35f, 0.4f); // get collision box from AABB function/static for optimization maybe visualize them to see if it is ok or not
     float playerModelScale = 0.5f;
     player = new Player(&playerModel, playerStartPos, playerBoxSize, playerModelScale);
-	Model GroundModel(FileSystem::getPath("resources/objects/map/map/map/ground.obj"));
+	Model GroundModel(FileSystem::getPath("resources/objects/ground/ground.obj"));
 	Model TargetModel(FileSystem::getPath("resources/objects/target/target.obj"));
 	player->SetGroundModel(&GroundModel);
 	player->SetArrowManager(&arrowModel, 0.01f);
@@ -177,7 +177,7 @@ int main()
     enemyManager.Spawn(glm::vec3(5.0f, 0.5f, 5.0f), 0.2f, 100.0f);
     enemyManager.Spawn(glm::vec3(-5.0f, 0.5f, 5.0f), 0.2f, 100.0f);
     enemyManager.Spawn(glm::vec3(0.0f, 0.5f, -8.0f), 0.3f, 150.0f);
-    monsterColliders = GenerateOBBsFromModel(arrowModel, levelMatrix);
+    levelColliders = GenerateOBBsFromModel(visualModel, levelMatrix);
 
     debugRenderer.Init();
     // render loop
@@ -194,8 +194,9 @@ int main()
 
         // Update player logic (physics, collision)
         // player.Update(deltaTime, levelColliders); //TODO: this one is needed but the map needed to be fix first
-        player->Update(deltaTime, monsterColliders);
+        player->Update(deltaTime, &levelColliders);
         enemyManager.Update(deltaTime, player->arrowManager);
+		player->arrowManager.Render(ourShader);
 
 		// Update camera position based on player
         glm::vec3 cameraTarget = player->GetBoxCenter(); // Follow center of collision box
@@ -217,7 +218,8 @@ int main()
         ourShader.setMat4("model", model);
 
         // render the visual level
-        //model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)); 
+        //model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		skyboxModel.Draw(ourShader);
         visualModel.Draw(ourShader);
 		GroundModel.Draw(ourShader);
 
@@ -229,8 +231,6 @@ int main()
 
         // Draw the yellow circle at the aim target
         // Render the player
-        player->arrowManager.Update(deltaTime, monsterColliders);
-		player->arrowManager.Render(ourShader);
 
         // One line to draw all enemies
         enemyManager.Render(ourShader);
@@ -260,7 +260,7 @@ int main()
         for (const auto& enemy : enemyManager.GetEnemies()) {
             debugRenderer.DrawOBB(enemy.Collider, view, projection);
         }
-        
+        debugRenderer.DrawOBB(player->Collider, view, projection);
         glfwSwapBuffers(window);
         glfwPollEvents();
     }

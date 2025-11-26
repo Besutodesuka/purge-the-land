@@ -9,11 +9,10 @@
 #include <string>
 
 // Includes for Animation
-// #include <learnopengl/model.h>
 #include <learnopengl/shader_m.h>
-#include <learnopengl/animator.h>        // ADDED
-#include <learnopengl/model_animation.h> // ADDED
-#include <learnopengl/filesystem.h>      // ADDED for paths
+#include <learnopengl/animator.h>        
+#include <learnopengl/model_animation.h> 
+#include <learnopengl/filesystem.h>      
 
 #include <go/physic.h>
 #include <go/camera_3rd.h> 
@@ -43,7 +42,10 @@ public:
         WALK_FORWARD,
         WALK_BACKWARD,
         WALK_LEFT,
-        WALK_RIGHT
+        WALK_RIGHT,
+
+        // New State for Shooting
+        SHOOTING_RECOIL
     };
 
     // Player state
@@ -51,6 +53,8 @@ public:
     glm::vec3 Velocity;
     float RotationY;
     bool IsGrounded;
+    bool isAiming;        // Track if mouse button is held
+    bool isShooting;      // Track if recoil is playing
 
     // Collision
     AABB CollisionBox;
@@ -68,6 +72,8 @@ public:
     Reticle aimReticle;
     float aimDistance = 2.0f;
 
+    float recoilTimer;
+
     // Shooting Mechanics
     float min_power = 0.5f;
     float max_power = 3.0f;
@@ -77,11 +83,21 @@ public:
 
     // --- ANIMATION MEMBERS ---
     Animator* animator;
+
+    // Standard Animations
     Animation* idleAnimation;
     Animation* walkForwardAnimation;
     Animation* walkBackwardAnimation;
     Animation* walkLeftAnimation;
     Animation* walkRightAnimation;
+
+    // Aiming Animations
+    Animation* aimIdleAnimation;
+    Animation* aimRecoilAnimation;
+    Animation* aimWalkForwardAnimation;
+    Animation* aimWalkBackwardAnimation;
+    Animation* aimWalkLeftAnimation;
+    Animation* aimWalkRightAnimation;
 
     AnimState charState;
     float blendAmount;
@@ -98,22 +114,27 @@ public:
         : PlayerModel(model), Position(startPos), AABBSize(boxSize),
         Velocity(0.0f), RotationY(0.0f), IsGrounded(false), ModelScale(modelScale), arrowManager(nullptr)
     {
+        // Safety check
+        if (model == nullptr) {
+            std::cerr << "CRITICAL ERROR: PlayerModel is NULL!" << std::endl;
+            throw std::runtime_error("PlayerModel cannot be null");
+        }
+
         Collider.halfExtents = boxSize * 0.5f;
         HeightOffset = boxSize.y / 2.0f;
         SyncColliders();
 
         ShootDirection = glm::vec3(0.0f, 0.0f, 1.0f);
+        isAiming = false;
+        isShooting = false;
+
+        recoilTimer = 0.0f;
 
         // Initialize Animation Data
-        if (model == nullptr) {
-            std::cerr << "Player initialize with PlayerModel is NULL. Animation loading will crash. skip all animation loading process" << std::endl;
-        }
-        else {
-            InitAnimations();
-        }
+        InitAnimations();
     }
 
-    // Destructor to clean up allocated animations
+    // Destructor
     ~Player() {
         delete animator;
         delete idleAnimation;
@@ -121,23 +142,39 @@ public:
         delete walkBackwardAnimation;
         delete walkLeftAnimation;
         delete walkRightAnimation;
+
+        // Delete new animations
+        delete aimIdleAnimation;
+        delete aimRecoilAnimation;
+        delete aimWalkForwardAnimation;
+        delete aimWalkBackwardAnimation;
+        delete aimWalkLeftAnimation;
+        delete aimWalkRightAnimation;
     }
 
     // --- INITIALIZATION ---
     void InitAnimations() {
-        // Load animations using the paths from your skeletal_animation.cpp
-        // Ensure these paths are correct relative to your executable
-        idleAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Aim Idle 01.dae"), PlayerModel);
+        // Standard Set (No Aim)
+        idleAnimation = new Animation(FileSystem::getPath("resources/objects/player/Idle.dae"), PlayerModel);
         walkForwardAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Walk Forward.dae"), PlayerModel);
         walkBackwardAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Walk Back.dae"), PlayerModel);
         walkLeftAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Walk Left.dae"), PlayerModel);
         walkRightAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Walk Right.dae"), PlayerModel);
 
+        // Aiming Set
+        // Note: Using "Standing Aim Idle 01" for both for smoother transition, or you could load a separate non-aim idle
+        aimIdleAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Aim Idle 01.dae"), PlayerModel);
+        aimRecoilAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Aim Recoil.dae"), PlayerModel);
+        aimWalkForwardAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Aim Walk Forward.dae"), PlayerModel);
+        aimWalkBackwardAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Aim Walk Back.dae"), PlayerModel);
+        aimWalkLeftAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Aim Walk Left.dae"), PlayerModel);
+        aimWalkRightAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Aim Walk Right.dae"), PlayerModel);
+
         animator = new Animator(idleAnimation);
 
         charState = IDLE;
         blendAmount = 0.0f;
-        blendRate = 2.0f; // Speed of blending
+        blendRate = 4.0f; // Faster blending
 
         requestWalkForward = false;
         requestWalkBackward = false;
@@ -152,6 +189,7 @@ public:
     }
 
     void SetGroundModel(Model* model) {
+        if (!model) return;
         std::vector<Vertex> myLoadedVertices = model->meshes[0].vertices;
         std::vector<glm::vec3> collisionPositions;
         collisionPositions.reserve(myLoadedVertices.size());
@@ -175,45 +213,64 @@ public:
 
         ShootDirection = glm::normalize(ShootDirection);
 
+        // If aiming, character rotates to face cursor
+        if (isAiming) {
+            RotationY = glm::degrees(atan2(ShootDirection.x, ShootDirection.z));
+        }
+
         float pixelToWorldScale = 0.005f;
         currentAimDist = distanceInPixels * pixelToWorldScale;
-
         if (currentAimDist > 5.0f) currentAimDist = 5.0f;
     }
 
-    void ProcessMouseMovement(float xoffset, float yoffset, bool constrainPitch = true) {
-        // Not used
-    }
-
     void ProcessMouse(int click, float deltaTime) {
+        // click: 1 = pressed (aim), 0 = released (fire/stop aim)
+
         if (click == 1) {
+            // Rule: Left Click Input -> Aim
+            isAiming = true;
             power += deltaTime * 2.0f;
             power = std::min(max_power, power);
         }
-        else if (click == 0) {
-            glm::vec3 flatDir = glm::normalize(glm::vec3(ShootDirection.x, 0.0f, ShootDirection.z));
-            glm::vec3 launchDir = flatDir;
-            launchDir.y = 1.0f;
-            launchDir = glm::normalize(launchDir);
+        else if (click == 0 && isAiming) {
+            // Rule: Release -> Fire and Stop Aim
+            FireArrow();
 
-            arrowManager.Add_Arrow(
-                launchDir * (power * 2.5f),
-                Position + glm::vec3(0.0f, HeightOffset, 0.0f)
-            );
+            // Trigger Recoil
+            charState = SHOOTING_RECOIL;
+            recoilTimer = 0.0f;
+            animator->PlayAnimation(aimRecoilAnimation, NULL, 0.0f, 0.0f, 0.0f);
+
+            // Reset logic
             power = min_power;
+            isAiming = false;
         }
     }
 
+    void FireArrow() {
+        glm::vec3 flatDir = glm::normalize(glm::vec3(ShootDirection.x, 0.0f, ShootDirection.z));
+        glm::vec3 launchDir = flatDir;
+
+        // 15 Degree launch angle (tan(15) ~ 0.268)
+        launchDir.y = 0.268f;
+        launchDir = glm::normalize(launchDir);
+
+        // Spawn at 75% height
+        float spawnHeight = Position.y + (AABBSize.y * 0.75f);
+
+        arrowManager.Add_Arrow(
+            launchDir * (power * 5.0f),
+            glm::vec3(Position.x, spawnHeight, Position.z)
+        );
+    }
+
     void ProcessKeyboard(const glm::vec3& camFront, const glm::vec3& camRight, std::vector<int> direction, float deltaTime) {
-        // 1. Reset Request Flags
         requestWalkForward = false;
         requestWalkBackward = false;
         requestWalkLeft = false;
         requestWalkRight = false;
 
-        // 2. Map Input Vector to Physics and Animation Flags
-        // Assuming direction mapping: [0]=Forward, [1]=Left, [2]=Backward, [3]=Right
-        float velocity = PLAYER_SPEED;
+        float velocity = isAiming ? PLAYER_SPEED * 0.6f : PLAYER_SPEED; // Slower when aiming
         glm::vec3 moveDirection(0.0f);
 
         glm::vec3 camForwardHorizontal = glm::normalize(glm::vec3(camFront.x, 0.0f, camFront.z));
@@ -236,12 +293,16 @@ public:
             requestWalkRight = true;
         }
 
-        // Physics Movement
         if (glm::length(moveDirection) > 0.0f) {
             moveDirection = glm::normalize(moveDirection);
             Velocity.x = moveDirection.x * velocity;
             Velocity.z = moveDirection.z * velocity;
-            RotationY = glm::degrees(atan2(moveDirection.x, moveDirection.z));
+
+            // Rule: If NOT aiming, rotate to movement direction.
+            // If aiming, SetDirectionByMouse handles rotation.
+            if (!isAiming) {
+                RotationY = glm::degrees(atan2(moveDirection.x, moveDirection.z));
+            }
         }
         else {
             Velocity.x = 0.0f;
@@ -258,70 +319,110 @@ public:
 
     // --- PHYSICS & UPDATE ---
 
-    void Update(float deltaTime, const std::vector<OBB>& levelColliders) {
-        // 1. Update Physics
+    void Update(float deltaTime, const std::vector<OBB>* levelColliders = nullptr) {
         UpdatePhysics(deltaTime, levelColliders);
 
-        // 2. Update Arrows
-        arrowManager.Update(deltaTime, levelColliders);
+        // Handle optional colliders for arrows
+        static std::vector<OBB> empty;
+        arrowManager.Update(deltaTime, levelColliders ? *levelColliders : empty);
 
-        // 3. Update Animation State Machine
         UpdateAnimationLogic(deltaTime);
     }
 
-    void UpdatePhysics(float deltaTime, const std::vector<OBB>& levelColliders) {
+    void UpdatePhysics(float deltaTime, const std::vector<OBB>* levelColliders) {
         ApplyGravity(deltaTime);
 
-        // Y-Axis
+        // 1. Move Y first (Gravity/Jump)
         Position.y += Velocity.y * deltaTime;
-        SyncColliders();
-        IsGrounded = false;
 
-        CheckTerrainCollision();
-
-        // X/Z-Axis
+        // 2. Move X/Z (Horizontal) immediately
         Position.x += Velocity.x * deltaTime;
         Position.z += Velocity.z * deltaTime;
+
+        // Sync colliders at new potential position
         SyncColliders();
 
-        for (const OBB& wall : levelColliders) {
-            if (TestOBBOBB(Collider, wall)) {
-                Position.x -= Velocity.x * deltaTime;
-                Position.z -= Velocity.z * deltaTime;
-                SyncColliders();
-                break;
+        // 3. Wall Collision (Horizontal Revert)
+        if (levelColliders) {
+            for (const OBB& wall : *levelColliders) {
+                if (TestOBBOBB(Collider, wall)) {
+                    Position.x -= Velocity.x * deltaTime;
+                    Position.z -= Velocity.z * deltaTime;
+                    SyncColliders();
+                    break;
+                }
             }
         }
+
+        // 4. Terrain Collision (Snap Y)
+        // CRITICAL FIX: This must happen LAST.
+        // It calculates height at the NEW X/Z position and snaps Y up immediately.
+        IsGrounded = false;
+        CheckTerrainCollision();
     }
 
-    // The Logic transferred from skeletal_animation.cpp
+    // --- ANIMATION STATE MACHINE ---
+    // UPDATED LOGIC TO FOLLOW RULES:
+    // 1. No Input -> IDLE (No Aim)
+    // 2. Left Click Only -> AIM IDLE
+    // 3. Walk Only -> WALK NORMAL
+    // 4. Walk + Left Click -> AIM WALK
     void UpdateAnimationLogic(float deltaTime) {
-        // Update the animator *before* processing input that changes state
         animator->UpdateAnimation(deltaTime);
 
+        // 1. Determine the "Target" animations based on input state
+        // This ensures that if 'isAiming' is true, we ALWAYS use the Aim variants.
+        Animation* targetIdle = isAiming ? aimIdleAnimation : idleAnimation;
+        Animation* targetFwd = isAiming ? aimWalkForwardAnimation : walkForwardAnimation;
+        Animation* targetBack = isAiming ? aimWalkBackwardAnimation : walkBackwardAnimation;
+        Animation* targetLeft = isAiming ? aimWalkLeftAnimation : walkLeftAnimation;
+        Animation* targetRight = isAiming ? aimWalkRightAnimation : walkRightAnimation;
+
         switch (charState) {
-        case IDLE:
-            if (animator->m_CurrentAnimation != idleAnimation || animator->m_CurrentAnimation2 != NULL) {
-                animator->PlayAnimation(idleAnimation, NULL, animator->m_CurrentTime, 0.0f, 0.0f);
+        case SHOOTING_RECOIL:
+            // --- NEW LOGIC START ---
+            recoilTimer += deltaTime;
+
+            // Calculate duration in seconds explicitly
+            {
+                float tps = aimRecoilAnimation->GetTicksPerSecond();
+                if (tps == 0.0f) tps = 25.0f; // Safety default
+                float durationInSeconds = aimRecoilAnimation->GetDuration() / tps;
+
+                if (recoilTimer >= durationInSeconds) {
+                    charState = IDLE;
+                    animator->PlayAnimation(targetIdle, NULL, animator->m_CurrentTime, 0.0f, 0.0f);
+                }
             }
+            // --- NEW LOGIC END ---
+            break;
+
+        case IDLE:
+            // Rule: If Aim status changes while Idle, swap animation immediately.
+            // (e.g., Idle -> Aim Idle)
+            if (animator->m_CurrentAnimation != targetIdle && animator->m_CurrentAnimation != aimRecoilAnimation) {
+                animator->PlayAnimation(targetIdle, NULL, animator->m_CurrentTime, 0.0f, 0.0f);
+            }
+
+            // Transitions to Walking (Normal or Aim based on target pointers)
             if (requestWalkForward) {
                 blendAmount = 0.0f;
-                animator->PlayAnimation(idleAnimation, walkForwardAnimation, animator->m_CurrentTime, 0.0f, blendAmount);
+                animator->PlayAnimation(targetIdle, targetFwd, animator->m_CurrentTime, 0.0f, blendAmount);
                 charState = IDLE_WALK_FORWARD;
             }
             else if (requestWalkBackward) {
                 blendAmount = 0.0f;
-                animator->PlayAnimation(idleAnimation, walkBackwardAnimation, animator->m_CurrentTime, 0.0f, blendAmount);
+                animator->PlayAnimation(targetIdle, targetBack, animator->m_CurrentTime, 0.0f, blendAmount);
                 charState = IDLE_WALK_BACKWARD;
             }
             else if (requestWalkLeft) {
                 blendAmount = 0.0f;
-                animator->PlayAnimation(idleAnimation, walkLeftAnimation, animator->m_CurrentTime, 0.0f, blendAmount);
+                animator->PlayAnimation(targetIdle, targetLeft, animator->m_CurrentTime, 0.0f, blendAmount);
                 charState = IDLE_WALK_LEFT;
             }
             else if (requestWalkRight) {
                 blendAmount = 0.0f;
-                animator->PlayAnimation(idleAnimation, walkRightAnimation, animator->m_CurrentTime, 0.0f, blendAmount);
+                animator->PlayAnimation(targetIdle, targetRight, animator->m_CurrentTime, 0.0f, blendAmount);
                 charState = IDLE_WALK_RIGHT;
             }
             break;
@@ -330,26 +431,31 @@ public:
             blendAmount += blendRate * deltaTime;
             if (blendAmount >= 1.0f) {
                 blendAmount = 1.0f;
-                animator->PlayAnimation(walkForwardAnimation, NULL, animator->m_CurrentTime2, 0.0f, 0.0f);
+                animator->PlayAnimation(targetFwd, NULL, animator->m_CurrentTime2, 0.0f, 0.0f);
                 charState = WALK_FORWARD;
             }
             else {
-                animator->PlayAnimation(idleAnimation, walkForwardAnimation, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
+                // Continue blend. Note we use targetIdle/targetFwd. 
+                // If Aim state changes mid-blend, this swaps the animation instantly.
+                animator->PlayAnimation(targetIdle, targetFwd, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
             }
             if (!requestWalkForward) {
                 blendAmount = 1.0f - blendAmount;
-                animator->PlayAnimation(walkForwardAnimation, idleAnimation, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
+                animator->PlayAnimation(targetFwd, targetIdle, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
                 charState = WALK_FORWARD_IDLE;
             }
             break;
 
         case WALK_FORWARD:
-            if (animator->m_CurrentAnimation != walkForwardAnimation || animator->m_CurrentAnimation2 != NULL) {
-                animator->PlayAnimation(walkForwardAnimation, NULL, animator->m_CurrentTime, 0.0f, 0.0f);
+            // Rule: If Walk -> Aim Walk (or vice versa), swap animation immediately.
+            if (animator->m_CurrentAnimation != targetFwd) {
+                float oldTime = animator->m_CurrentTime; // Keep sync
+                animator->PlayAnimation(targetFwd, NULL, oldTime, 0.0f, 0.0f);
             }
+
             if (!requestWalkForward) {
                 blendAmount = 0.0f;
-                animator->PlayAnimation(walkForwardAnimation, idleAnimation, animator->m_CurrentTime, 0.0f, blendAmount);
+                animator->PlayAnimation(targetFwd, targetIdle, animator->m_CurrentTime, 0.0f, blendAmount);
                 charState = WALK_FORWARD_IDLE;
             }
             break;
@@ -358,15 +464,15 @@ public:
             blendAmount += blendRate * deltaTime;
             if (blendAmount >= 1.0f) {
                 blendAmount = 1.0f;
-                animator->PlayAnimation(idleAnimation, NULL, animator->m_CurrentTime2, 0.0f, 0.0f);
+                animator->PlayAnimation(targetIdle, NULL, animator->m_CurrentTime2, 0.0f, 0.0f);
                 charState = IDLE;
             }
             else {
-                animator->PlayAnimation(walkForwardAnimation, idleAnimation, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
+                animator->PlayAnimation(targetFwd, targetIdle, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
             }
             if (requestWalkForward) {
                 blendAmount = 1.0f - blendAmount;
-                animator->PlayAnimation(idleAnimation, walkForwardAnimation, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
+                animator->PlayAnimation(targetIdle, targetFwd, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
                 charState = IDLE_WALK_FORWARD;
             }
             break;
@@ -376,26 +482,27 @@ public:
             blendAmount += blendRate * deltaTime;
             if (blendAmount >= 1.0f) {
                 blendAmount = 1.0f;
-                animator->PlayAnimation(walkBackwardAnimation, NULL, animator->m_CurrentTime2, 0.0f, 0.0f);
+                animator->PlayAnimation(targetBack, NULL, animator->m_CurrentTime2, 0.0f, 0.0f);
                 charState = WALK_BACKWARD;
             }
             else {
-                animator->PlayAnimation(idleAnimation, walkBackwardAnimation, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
+                animator->PlayAnimation(targetIdle, targetBack, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
             }
             if (!requestWalkBackward) {
                 blendAmount = 1.0f - blendAmount;
-                animator->PlayAnimation(walkBackwardAnimation, idleAnimation, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
+                animator->PlayAnimation(targetBack, targetIdle, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
                 charState = WALK_BACKWARD_IDLE;
             }
             break;
 
         case WALK_BACKWARD:
-            if (animator->m_CurrentAnimation != walkBackwardAnimation || animator->m_CurrentAnimation2 != NULL) {
-                animator->PlayAnimation(walkBackwardAnimation, NULL, animator->m_CurrentTime, 0.0f, 0.0f);
+            if (animator->m_CurrentAnimation != targetBack) {
+                float oldTime = animator->m_CurrentTime;
+                animator->PlayAnimation(targetBack, NULL, oldTime, 0.0f, 0.0f);
             }
             if (!requestWalkBackward) {
                 blendAmount = 0.0f;
-                animator->PlayAnimation(walkBackwardAnimation, idleAnimation, animator->m_CurrentTime, 0.0f, blendAmount);
+                animator->PlayAnimation(targetBack, targetIdle, animator->m_CurrentTime, 0.0f, blendAmount);
                 charState = WALK_BACKWARD_IDLE;
             }
             break;
@@ -404,15 +511,15 @@ public:
             blendAmount += blendRate * deltaTime;
             if (blendAmount >= 1.0f) {
                 blendAmount = 1.0f;
-                animator->PlayAnimation(idleAnimation, NULL, animator->m_CurrentTime2, 0.0f, 0.0f);
+                animator->PlayAnimation(targetIdle, NULL, animator->m_CurrentTime2, 0.0f, 0.0f);
                 charState = IDLE;
             }
             else {
-                animator->PlayAnimation(walkBackwardAnimation, idleAnimation, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
+                animator->PlayAnimation(targetBack, targetIdle, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
             }
             if (requestWalkBackward) {
                 blendAmount = 1.0f - blendAmount;
-                animator->PlayAnimation(idleAnimation, walkBackwardAnimation, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
+                animator->PlayAnimation(targetIdle, targetBack, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
                 charState = IDLE_WALK_BACKWARD;
             }
             break;
@@ -422,26 +529,27 @@ public:
             blendAmount += blendRate * deltaTime;
             if (blendAmount >= 1.0f) {
                 blendAmount = 1.0f;
-                animator->PlayAnimation(walkLeftAnimation, NULL, animator->m_CurrentTime2, 0.0f, 0.0f);
+                animator->PlayAnimation(targetLeft, NULL, animator->m_CurrentTime2, 0.0f, 0.0f);
                 charState = WALK_LEFT;
             }
             else {
-                animator->PlayAnimation(idleAnimation, walkLeftAnimation, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
+                animator->PlayAnimation(targetIdle, targetLeft, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
             }
             if (!requestWalkLeft) {
                 blendAmount = 1.0f - blendAmount;
-                animator->PlayAnimation(walkLeftAnimation, idleAnimation, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
+                animator->PlayAnimation(targetLeft, targetIdle, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
                 charState = WALK_LEFT_IDLE;
             }
             break;
 
         case WALK_LEFT:
-            if (animator->m_CurrentAnimation != walkLeftAnimation || animator->m_CurrentAnimation2 != NULL) {
-                animator->PlayAnimation(walkLeftAnimation, NULL, animator->m_CurrentTime, 0.0f, 0.0f);
+            if (animator->m_CurrentAnimation != targetLeft) {
+                float oldTime = animator->m_CurrentTime;
+                animator->PlayAnimation(targetLeft, NULL, oldTime, 0.0f, 0.0f);
             }
             if (!requestWalkLeft) {
                 blendAmount = 0.0f;
-                animator->PlayAnimation(walkLeftAnimation, idleAnimation, animator->m_CurrentTime, 0.0f, blendAmount);
+                animator->PlayAnimation(targetLeft, targetIdle, animator->m_CurrentTime, 0.0f, blendAmount);
                 charState = WALK_LEFT_IDLE;
             }
             break;
@@ -450,15 +558,15 @@ public:
             blendAmount += blendRate * deltaTime;
             if (blendAmount >= 1.0f) {
                 blendAmount = 1.0f;
-                animator->PlayAnimation(idleAnimation, NULL, animator->m_CurrentTime2, 0.0f, 0.0f);
+                animator->PlayAnimation(targetIdle, NULL, animator->m_CurrentTime2, 0.0f, 0.0f);
                 charState = IDLE;
             }
             else {
-                animator->PlayAnimation(walkLeftAnimation, idleAnimation, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
+                animator->PlayAnimation(targetLeft, targetIdle, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
             }
             if (requestWalkLeft) {
                 blendAmount = 1.0f - blendAmount;
-                animator->PlayAnimation(idleAnimation, walkLeftAnimation, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
+                animator->PlayAnimation(targetIdle, targetLeft, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
                 charState = IDLE_WALK_LEFT;
             }
             break;
@@ -468,26 +576,27 @@ public:
             blendAmount += blendRate * deltaTime;
             if (blendAmount >= 1.0f) {
                 blendAmount = 1.0f;
-                animator->PlayAnimation(walkRightAnimation, NULL, animator->m_CurrentTime2, 0.0f, 0.0f);
+                animator->PlayAnimation(targetRight, NULL, animator->m_CurrentTime2, 0.0f, 0.0f);
                 charState = WALK_RIGHT;
             }
             else {
-                animator->PlayAnimation(idleAnimation, walkRightAnimation, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
+                animator->PlayAnimation(targetIdle, targetRight, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
             }
             if (!requestWalkRight) {
                 blendAmount = 1.0f - blendAmount;
-                animator->PlayAnimation(walkRightAnimation, idleAnimation, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
+                animator->PlayAnimation(targetRight, targetIdle, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
                 charState = WALK_RIGHT_IDLE;
             }
             break;
 
         case WALK_RIGHT:
-            if (animator->m_CurrentAnimation != walkRightAnimation || animator->m_CurrentAnimation2 != NULL) {
-                animator->PlayAnimation(walkRightAnimation, NULL, animator->m_CurrentTime, 0.0f, 0.0f);
+            if (animator->m_CurrentAnimation != targetRight) {
+                float oldTime = animator->m_CurrentTime;
+                animator->PlayAnimation(targetRight, NULL, oldTime, 0.0f, 0.0f);
             }
             if (!requestWalkRight) {
                 blendAmount = 0.0f;
-                animator->PlayAnimation(walkRightAnimation, idleAnimation, animator->m_CurrentTime, 0.0f, blendAmount);
+                animator->PlayAnimation(targetRight, targetIdle, animator->m_CurrentTime, 0.0f, blendAmount);
                 charState = WALK_RIGHT_IDLE;
             }
             break;
@@ -496,15 +605,15 @@ public:
             blendAmount += blendRate * deltaTime;
             if (blendAmount >= 1.0f) {
                 blendAmount = 1.0f;
-                animator->PlayAnimation(idleAnimation, NULL, animator->m_CurrentTime2, 0.0f, 0.0f);
+                animator->PlayAnimation(targetIdle, NULL, animator->m_CurrentTime2, 0.0f, 0.0f);
                 charState = IDLE;
             }
             else {
-                animator->PlayAnimation(walkRightAnimation, idleAnimation, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
+                animator->PlayAnimation(targetRight, targetIdle, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
             }
             if (requestWalkRight) {
                 blendAmount = 1.0f - blendAmount;
-                animator->PlayAnimation(idleAnimation, walkRightAnimation, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
+                animator->PlayAnimation(targetIdle, targetRight, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
                 charState = IDLE_WALK_RIGHT;
             }
             break;
@@ -514,14 +623,11 @@ public:
     // --- RENDER ---
 
     void Draw(Shader& shader, bool flip = true) {
-        // 1. Send Bone Transforms to Shader
-        // Get bone transforms from the animator
         auto transforms = animator->GetFinalBoneMatrices();
         for (int i = 0; i < transforms.size(); ++i) {
             shader.setMat4("finalBonesMatrices[" + std::to_string(i) + "]", transforms[i]);
         }
 
-        // 2. Draw Player Model
         glm::mat4 model = glm::mat4(1.0f);
         model = glm::translate(model, Position);
         float offset = flip ? 180.0f : 0.0f;
@@ -530,12 +636,14 @@ public:
         shader.setMat4("model", model);
         PlayerModel->Draw(shader);
 
-        // 4. Draw Reticle (Cursor)
-        /*glm::vec3 flatDir = glm::normalize(glm::vec3(ShootDirection.x, 0.0f, ShootDirection.z));
+        glm::vec3 flatDir = glm::normalize(glm::vec3(ShootDirection.x, 0.0f, ShootDirection.z));
         glm::vec3 reticlePos = Position + (flatDir * currentAimDist);
-
-        aimReticle.Draw(shader, reticlePos);*/
+        aimReticle.Draw(shader, reticlePos);
     }
+
+    // --- DISABLE COPYING ---
+    Player(const Player&) = delete;
+    Player& operator=(const Player&) = delete;
 
 private:
     void ApplyGravity(float deltaTime) {
@@ -562,7 +670,8 @@ private:
     void CheckTerrainCollision() {
         if (GroundModel.isBuilt()) {
             float groundHeight = GroundModel.getExactHeightAt(Position);
-            if (Position.y < groundHeight) {
+            // --- CHANGE: Added safety check to avoid falling into void ---
+            if (groundHeight > -500.0f && Position.y < groundHeight) {
                 Position.y = groundHeight;
                 Velocity.y = 0.0f;
                 IsGrounded = true;
