@@ -134,8 +134,26 @@ public:
         isShooting = false;
         recoilTimer = 0.0f;
 
-        // Initialize Animation Data
+        this->startPosition = startPos;
         InitAnimations();
+    }
+
+     void Reset() {
+        Position = startPosition;
+        CurrentHealth = MaxHealth;
+        IsDead = false;
+        isAiming = false;
+        isShooting = false;
+        Velocity = glm::vec3(0.0f);
+        IsGrounded = false;
+        power = min_power;
+        
+        // Reset Animation
+        charState = IDLE;
+        animator->PlayAnimation(idleAnimation, NULL, 0.0f, 0.0f, 0.0f);
+        
+        // Sync Physics
+        SyncColliders();
     }
 
     // Destructor
@@ -593,6 +611,8 @@ public:
     Player& operator=(const Player&) = delete;
 
 private:
+    glm::vec3 startPosition;
+    
     void ApplyGravity(float deltaTime) {
         if (!IsGrounded) {
             Velocity.y += GRAVITY * deltaTime;

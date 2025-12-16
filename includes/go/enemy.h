@@ -244,6 +244,11 @@ public:
     const std::vector<Enemy>& GetEnemies() const {
         return enemies;
     }
+    
+    void Reset() {
+        enemies.clear();
+        // You will re-spawn them in main.cpp
+    }
 };
 
 #endif
