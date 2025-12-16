@@ -31,6 +31,8 @@ glm::vec3 GetRayFromMouse(float mouseX, float mouseY, int screenW, int screenH, 
 // settings
 const unsigned int SCR_WIDTH = 1980;
 const unsigned int SCR_HEIGHT = 1080;
+bool FREECAM = true;
+bool HITBOX = true;
 
 // camera
 // We now initialize our new camera. All logic is inside the class.
@@ -88,12 +90,12 @@ int main()
     // We follow the plan: one visual model, one collision model
     Model playerModel(FileSystem::getPath("resources/objects/player/Erika Archer With Bow Arrow.dae"));
     Model arrowModel(FileSystem::getPath("resources/objects/arrow/arrow.obj"));
-    Model visualModel(FileSystem::getPath("resources/objects/map/map.obj"));
+    Model visualModel(FileSystem::getPath("resources/objects/map/structure.obj"));
 	Model skyboxModel(FileSystem::getPath("resources/objects/skybox/skybox.obj"));
     //Model collisionModel(FileSystem::getPath("resources/objects/map/world/hitbox_map.obj")); 
 
     // Create the Player
-    glm::vec3 playerStartPos(10.0f, 40.0f, 10.0f);
+    glm::vec3 playerStartPos(10.0f, 70.0f, 10.0f);
     glm::vec3 playerBoxSize(0.2f, 0.35f, 0.4f); // get collision box from AABB function/static for optimization maybe visualize them to see if it is ok or not
     float playerModelScale = 0.5f;
     player = new Player(&playerModel, playerStartPos, playerBoxSize, playerModelScale);
@@ -200,7 +202,7 @@ int main()
 
 		// Update camera position based on player
         glm::vec3 cameraTarget = player->GetBoxCenter(); // Follow center of collision box
-        camera.SetIsometricView(cameraTarget, 5.0f); // Initial isometric view
+        //camera.SetIsometricView(cameraTarget, 5.0f); // Initial isometric view
 
         // render
         // ------
@@ -221,7 +223,7 @@ int main()
         //model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 		skyboxModel.Draw(ourShader);
         visualModel.Draw(ourShader);
-		GroundModel.Draw(ourShader);
+		//GroundModel.Draw(ourShader);
 
   //      model = glm::mat4(1.0f);
 		//model = glm::translate(model, glm::vec3(-1.0f, -0.25f, 1.0f));
@@ -254,13 +256,15 @@ int main()
         enemyManager.RenderUI(cursorShader);
 
         //debug hit box
-        for (const Arrow& a : player->arrowManager.arrows) {
-            debugRenderer.DrawOBB(a.hitbox, view, projection);
-		}
-        for (const auto& enemy : enemyManager.GetEnemies()) {
-            debugRenderer.DrawOBB(enemy.Collider, view, projection);
+        if (HITBOX) {
+            for (const Arrow& a : player->arrowManager.arrows) {
+                debugRenderer.DrawOBB(a.hitbox, view, projection);
+		    }
+            for (const auto& enemy : enemyManager.GetEnemies()) {
+                debugRenderer.DrawOBB(enemy.Collider, view, projection);
+            }
+            debugRenderer.DrawOBB(player->Collider, view, projection);
         }
-        debugRenderer.DrawOBB(player->Collider, view, projection);
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
@@ -276,12 +280,27 @@ void processInput(GLFWwindow* window, Player* player, Camera* camera, float delt
         glfwSetWindowShouldClose(window, true);
 
     std::vector<int> direction = { 0,0,0,0 };
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) direction[0] = 1;
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) direction[1] = 1;
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) direction[2] = 1;
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) direction[3] = 1;
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {      
+        direction[0] = 1;
+        camera->ProcessKeyboard(FORWARD, deltaTime);
+    }
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+        direction[1] = 1;
+        camera->ProcessKeyboard(LEFT, deltaTime);
+    } 
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+        direction[2] = 1;
+        camera->ProcessKeyboard(BACKWARD, deltaTime);
+    }
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+        direction[3] = 1;
+        camera->ProcessKeyboard(RIGHT, deltaTime);
+    }
 
-    player->ProcessKeyboard(camera->Front, camera->Right, direction, deltaTime);
+    if (!FREECAM) {
+        player->ProcessKeyboard(camera->Front, camera->Right, direction, deltaTime);
+    }
+    
 
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
         player->Jump();
@@ -345,43 +364,40 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 }
 
 // mouse_callback:
-// Simplified to just call the camera class
+// used for debug map
 // ---------------------------------------------------------------------------------------------
 void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
 {
-    //float xpos = static_cast<float>(xposIn);
-    //float ypos = static_cast<float>(yposIn);
+    if (!FREECAM) {
+        return; // Skip if in not freecam mode
+	}
+    float xpos = static_cast<float>(xposIn);
+    float ypos = static_cast<float>(yposIn);
 
-    //if (firstMouse)
-    //{
-    //    lastX = xpos;
-    //    lastY = ypos;
-    //    firstMouse = false;
-    //}
+    if (firstMouse)
+    {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
 
-    //// We don't need xoffset/yoffset for isometric cursor logic
-    //lastX = xpos;
-    //lastY = ypos;
+    float xoffset = xpos - lastX;
+    float yoffset = lastY - ypos; // reversed since y-coordinates go from bottom to top
 
-    //// 1. Calculate Offsets from Center of Screen
-    //// (We assume Player is always in the center of the screen)
-    //float deltaX = xpos - (SCR_WIDTH / 2.0f);
-    //float deltaY = ypos - (SCR_HEIGHT / 2.0f);
+    lastX = xpos;
+    lastY = ypos;
 
-    //// 2. Calculate Angle
-    //// Note: 'atan2' takes (y, x). We use deltaY, deltaX.
-    //double angle = atan2(deltaY, deltaX);
-
-    //float distPixels = std::sqrt(deltaX * deltaX + deltaY * deltaY);
-    //
-    //player->SetDirectionByMouse(angle, distPixels);
+    camera.ProcessMouseMovement(xoffset, yoffset);
 }
 
 // scroll_callback (NO CHANGES)
 // ---------------------------------------------------------------------------------------------
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
-    //camera.ProcessMouseScroll(static_cast<float>(yoffset));
+    if (!FREECAM) {
+        return; // Skip if in not freecam mode
+    }
+    camera.ProcessMouseScroll(static_cast<float>(yoffset));
 }
 
 // Returns the 3D direction vector of the ray coming out of the camera
