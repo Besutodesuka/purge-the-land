@@ -13,6 +13,15 @@ const float ZOOM = 45.0f;
 const float MAX_PITCH_ANGLE = 45.0f; // Your value from main.cpp
 const float MIN_PITCH_ANGLE = 5.0f;  // Don't let camera go below player
 
+enum Camera_Movement {
+    FORWARD,
+    BACKWARD,
+    LEFT,
+    RIGHT,
+    UP,
+    NONE
+};
+
 class Camera
 {
 public:
@@ -127,6 +136,30 @@ public:
         // also re-calculate the Right and Up vector
         Right = glm::normalize(glm::cross(Front, WorldUp));
         Up = glm::normalize(glm::cross(Right, Front));
+    }
+
+    void ProcessKeyboard(Camera_Movement direction, float deltaTime, bool flyMode = true)
+    {
+		float MovementSpeed = 2.5f; // You can adjust speed here
+        float velocity = MovementSpeed * deltaTime;
+        if (direction == FORWARD)
+            if (flyMode)
+                Position += Front * velocity;
+            else
+                Position += glm::vec3(Front.x, 0.0f, Front.z) * velocity;
+        if (direction == BACKWARD)
+            if (flyMode)
+                Position -= Front * velocity;
+            else
+                Position -= glm::vec3(Front.x, 0.0f, Front.z) * velocity;
+        if (direction == LEFT)
+            Position -= Right * velocity;
+        if (direction == RIGHT)
+            Position += Right * velocity;
+        if (direction == UP && !flyMode)
+            Position += glm::vec3(0.0f, 0.04f, 0.0f) * velocity;
+        // Note: Gravity/falling is now handled in the main game loop for player entities
+        // This keeps collision detection and physics in one place
     }
 };
 #endif
