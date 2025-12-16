@@ -29,7 +29,6 @@ public:
     // Animation State Enum
     enum AnimState {
         IDLE = 1,
-        // Walking animations blend states
         IDLE_WALK_FORWARD,
         WALK_FORWARD_IDLE,
         IDLE_WALK_BACKWARD,
@@ -38,13 +37,10 @@ public:
         WALK_LEFT_IDLE,
         IDLE_WALK_RIGHT,
         WALK_RIGHT_IDLE,
-
         WALK_FORWARD,
         WALK_BACKWARD,
         WALK_LEFT,
         WALK_RIGHT,
-
-        // New State for Shooting
         SHOOTING_RECOIL
     };
 
@@ -53,8 +49,13 @@ public:
     glm::vec3 Velocity;
     float RotationY;
     bool IsGrounded;
-    bool isAiming;        // Track if mouse button is held
-    bool isShooting;      // Track if recoil is playing
+    bool isAiming;
+    bool isShooting;
+
+    // Health Stats
+    float MaxHealth;
+    float CurrentHealth;
+    bool IsDead;
 
     // Collision
     AABB CollisionBox;
@@ -114,11 +115,15 @@ public:
         : PlayerModel(model), Position(startPos), AABBSize(boxSize),
         Velocity(0.0f), RotationY(0.0f), IsGrounded(false), ModelScale(modelScale), arrowManager(nullptr)
     {
-        // Safety check
         if (model == nullptr) {
             std::cerr << "CRITICAL ERROR: PlayerModel is NULL!" << std::endl;
             throw std::runtime_error("PlayerModel cannot be null");
         }
+
+        // Initialize Health
+        MaxHealth = 100.0f;
+        CurrentHealth = 100.0f;
+        IsDead = false;
 
         Collider.halfExtents = boxSize * 0.5f;
         HeightOffset = boxSize.y / 2.0f;
@@ -127,7 +132,6 @@ public:
         ShootDirection = glm::vec3(0.0f, 0.0f, 1.0f);
         isAiming = false;
         isShooting = false;
-
         recoilTimer = 0.0f;
 
         // Initialize Animation Data
@@ -142,14 +146,24 @@ public:
         delete walkBackwardAnimation;
         delete walkLeftAnimation;
         delete walkRightAnimation;
-
-        // Delete new animations
         delete aimIdleAnimation;
         delete aimRecoilAnimation;
         delete aimWalkForwardAnimation;
         delete aimWalkBackwardAnimation;
         delete aimWalkLeftAnimation;
         delete aimWalkRightAnimation;
+    }
+
+    // --- DAMAGE LOGIC ---
+    void TakeDamage(float amount) {
+        if (IsDead) return;
+
+        CurrentHealth -= amount;
+        if (CurrentHealth <= 0.0f) {
+            CurrentHealth = 0.0f;
+            IsDead = true;
+            std::cout << "Player has died!" << std::endl;
+        }
     }
 
     // --- INITIALIZATION ---
@@ -162,7 +176,6 @@ public:
         walkRightAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Walk Right.dae"), PlayerModel);
 
         // Aiming Set
-        // Note: Using "Standing Aim Idle 01" for both for smoother transition, or you could load a separate non-aim idle
         aimIdleAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Aim Idle 01.dae"), PlayerModel);
         aimRecoilAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Aim Recoil.dae"), PlayerModel);
         aimWalkForwardAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Aim Walk Forward.dae"), PlayerModel);
@@ -174,7 +187,7 @@ public:
 
         charState = IDLE;
         blendAmount = 0.0f;
-        blendRate = 4.0f; // Faster blending
+        blendRate = 4.0f; 
 
         requestWalkForward = false;
         requestWalkBackward = false;
@@ -213,7 +226,6 @@ public:
 
         ShootDirection = glm::normalize(ShootDirection);
 
-        // If aiming, character rotates to face cursor
         if (isAiming) {
             RotationY = glm::degrees(atan2(ShootDirection.x, ShootDirection.z));
         }
@@ -224,24 +236,16 @@ public:
     }
 
     void ProcessMouse(int click, float deltaTime) {
-        // click: 1 = pressed (aim), 0 = released (fire/stop aim)
-
         if (click == 1) {
-            // Rule: Left Click Input -> Aim
             isAiming = true;
             power += deltaTime * 2.0f;
             power = std::min(max_power, power);
         }
         else if (click == 0 && isAiming) {
-            // Rule: Release -> Fire and Stop Aim
             FireArrow();
-
-            // Trigger Recoil
             charState = SHOOTING_RECOIL;
             recoilTimer = 0.0f;
             animator->PlayAnimation(aimRecoilAnimation, NULL, 0.0f, 0.0f, 0.0f);
-
-            // Reset logic
             power = min_power;
             isAiming = false;
         }
@@ -250,12 +254,8 @@ public:
     void FireArrow() {
         glm::vec3 flatDir = glm::normalize(glm::vec3(ShootDirection.x, 0.0f, ShootDirection.z));
         glm::vec3 launchDir = flatDir;
-
-        // 15 Degree launch angle (tan(15) ~ 0.268)
         launchDir.y = 0.268f;
         launchDir = glm::normalize(launchDir);
-
-        // Spawn at 75% height
         float spawnHeight = Position.y + (AABBSize.y * 0.75f);
 
         arrowManager.Add_Arrow(
@@ -270,36 +270,22 @@ public:
         requestWalkLeft = false;
         requestWalkRight = false;
 
-        float velocity = isAiming ? PLAYER_SPEED * 0.6f : PLAYER_SPEED; // Slower when aiming
+        float velocity = isAiming ? PLAYER_SPEED * 0.6f : PLAYER_SPEED; 
         glm::vec3 moveDirection(0.0f);
 
         glm::vec3 camForwardHorizontal = glm::normalize(glm::vec3(camFront.x, 0.0f, camFront.z));
         glm::vec3 camRightHorizontal = glm::normalize(glm::vec3(camRight.x, 0.0f, camRight.z));
 
-        if (direction[0] == 1) {
-            moveDirection += camForwardHorizontal;
-            requestWalkForward = true;
-        }
-        if (direction[1] == 1) {
-            moveDirection -= camRightHorizontal;
-            requestWalkLeft = true;
-        }
-        if (direction[2] == 1) {
-            moveDirection -= camForwardHorizontal;
-            requestWalkBackward = true;
-        }
-        if (direction[3] == 1) {
-            moveDirection += camRightHorizontal;
-            requestWalkRight = true;
-        }
+        if (direction[0] == 1) { moveDirection += camForwardHorizontal; requestWalkForward = true; }
+        if (direction[1] == 1) { moveDirection -= camRightHorizontal; requestWalkLeft = true; }
+        if (direction[2] == 1) { moveDirection -= camForwardHorizontal; requestWalkBackward = true; }
+        if (direction[3] == 1) { moveDirection += camRightHorizontal; requestWalkRight = true; }
 
         if (glm::length(moveDirection) > 0.0f) {
             moveDirection = glm::normalize(moveDirection);
             Velocity.x = moveDirection.x * velocity;
             Velocity.z = moveDirection.z * velocity;
 
-            // Rule: If NOT aiming, rotate to movement direction.
-            // If aiming, SetDirectionByMouse handles rotation.
             if (!isAiming) {
                 RotationY = glm::degrees(atan2(moveDirection.x, moveDirection.z));
             }
@@ -321,28 +307,18 @@ public:
 
     void Update(float deltaTime, const std::vector<OBB>* levelColliders = nullptr) {
         UpdatePhysics(deltaTime, levelColliders);
-
-        // Handle optional colliders for arrows
         static std::vector<OBB> empty;
         arrowManager.Update(deltaTime, levelColliders ? *levelColliders : empty);
-
         UpdateAnimationLogic(deltaTime);
     }
 
     void UpdatePhysics(float deltaTime, const std::vector<OBB>* levelColliders) {
         ApplyGravity(deltaTime);
-
-        // 1. Move Y first (Gravity/Jump)
         Position.y += Velocity.y * deltaTime;
-
-        // 2. Move X/Z (Horizontal) immediately
         Position.x += Velocity.x * deltaTime;
         Position.z += Velocity.z * deltaTime;
-
-        // Sync colliders at new potential position
         SyncColliders();
 
-        // 3. Wall Collision (Horizontal Revert)
         if (levelColliders) {
             for (const OBB& wall : *levelColliders) {
                 if (TestOBBOBB(Collider, wall)) {
@@ -353,25 +329,14 @@ public:
                 }
             }
         }
-
-        // 4. Terrain Collision (Snap Y)
-        // CRITICAL FIX: This must happen LAST.
-        // It calculates height at the NEW X/Z position and snaps Y up immediately.
         IsGrounded = false;
         CheckTerrainCollision();
     }
 
-    // --- ANIMATION STATE MACHINE ---
-    // UPDATED LOGIC TO FOLLOW RULES:
-    // 1. No Input -> IDLE (No Aim)
-    // 2. Left Click Only -> AIM IDLE
-    // 3. Walk Only -> WALK NORMAL
-    // 4. Walk + Left Click -> AIM WALK
+    // --- ANIMATION STATE MACHINE (RESTORED) ---
     void UpdateAnimationLogic(float deltaTime) {
         animator->UpdateAnimation(deltaTime);
 
-        // 1. Determine the "Target" animations based on input state
-        // This ensures that if 'isAiming' is true, we ALWAYS use the Aim variants.
         Animation* targetIdle = isAiming ? aimIdleAnimation : idleAnimation;
         Animation* targetFwd = isAiming ? aimWalkForwardAnimation : walkForwardAnimation;
         Animation* targetBack = isAiming ? aimWalkBackwardAnimation : walkBackwardAnimation;
@@ -380,31 +345,22 @@ public:
 
         switch (charState) {
         case SHOOTING_RECOIL:
-            // --- NEW LOGIC START ---
             recoilTimer += deltaTime;
-
-            // Calculate duration in seconds explicitly
             {
                 float tps = aimRecoilAnimation->GetTicksPerSecond();
-                if (tps == 0.0f) tps = 25.0f; // Safety default
+                if (tps == 0.0f) tps = 25.0f;
                 float durationInSeconds = aimRecoilAnimation->GetDuration() / tps;
-
                 if (recoilTimer >= durationInSeconds) {
                     charState = IDLE;
                     animator->PlayAnimation(targetIdle, NULL, animator->m_CurrentTime, 0.0f, 0.0f);
                 }
             }
-            // --- NEW LOGIC END ---
             break;
 
         case IDLE:
-            // Rule: If Aim status changes while Idle, swap animation immediately.
-            // (e.g., Idle -> Aim Idle)
             if (animator->m_CurrentAnimation != targetIdle && animator->m_CurrentAnimation != aimRecoilAnimation) {
                 animator->PlayAnimation(targetIdle, NULL, animator->m_CurrentTime, 0.0f, 0.0f);
             }
-
-            // Transitions to Walking (Normal or Aim based on target pointers)
             if (requestWalkForward) {
                 blendAmount = 0.0f;
                 animator->PlayAnimation(targetIdle, targetFwd, animator->m_CurrentTime, 0.0f, blendAmount);
@@ -435,8 +391,6 @@ public:
                 charState = WALK_FORWARD;
             }
             else {
-                // Continue blend. Note we use targetIdle/targetFwd. 
-                // If Aim state changes mid-blend, this swaps the animation instantly.
                 animator->PlayAnimation(targetIdle, targetFwd, animator->m_CurrentTime, animator->m_CurrentTime2, blendAmount);
             }
             if (!requestWalkForward) {
@@ -447,12 +401,10 @@ public:
             break;
 
         case WALK_FORWARD:
-            // Rule: If Walk -> Aim Walk (or vice versa), swap animation immediately.
             if (animator->m_CurrentAnimation != targetFwd) {
-                float oldTime = animator->m_CurrentTime; // Keep sync
+                float oldTime = animator->m_CurrentTime;
                 animator->PlayAnimation(targetFwd, NULL, oldTime, 0.0f, 0.0f);
             }
-
             if (!requestWalkForward) {
                 blendAmount = 0.0f;
                 animator->PlayAnimation(targetFwd, targetIdle, animator->m_CurrentTime, 0.0f, blendAmount);
@@ -477,7 +429,6 @@ public:
             }
             break;
 
-            // --- BACKWARD ---
         case IDLE_WALK_BACKWARD:
             blendAmount += blendRate * deltaTime;
             if (blendAmount >= 1.0f) {
@@ -524,7 +475,6 @@ public:
             }
             break;
 
-            // --- LEFT ---
         case IDLE_WALK_LEFT:
             blendAmount += blendRate * deltaTime;
             if (blendAmount >= 1.0f) {
@@ -571,7 +521,6 @@ public:
             }
             break;
 
-            // --- RIGHT ---
         case IDLE_WALK_RIGHT:
             blendAmount += blendRate * deltaTime;
             if (blendAmount >= 1.0f) {
@@ -619,8 +568,6 @@ public:
             break;
         }
     }
-
-    // --- RENDER ---
 
     void Draw(Shader& shader, bool flip = true) {
         auto transforms = animator->GetFinalBoneMatrices();
@@ -670,7 +617,6 @@ private:
     void CheckTerrainCollision() {
         if (GroundModel.isBuilt()) {
             float groundHeight = GroundModel.getExactHeightAt(Position);
-            // --- CHANGE: Added safety check to avoid falling into void ---
             if (groundHeight > -500.0f && Position.y < groundHeight) {
                 Position.y = groundHeight;
                 Velocity.y = 0.0f;

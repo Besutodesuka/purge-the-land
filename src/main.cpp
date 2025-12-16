@@ -31,7 +31,7 @@ glm::vec3 GetRayFromMouse(float mouseX, float mouseY, int screenW, int screenH, 
 // settings
 const unsigned int SCR_WIDTH = 1980;
 const unsigned int SCR_HEIGHT = 1080;
-bool FREECAM = true;
+bool FREECAM = false;
 bool HITBOX = true;
 
 // camera
@@ -42,7 +42,10 @@ float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
 
+// UI Elements
+PlayerHUD playerHUD;
 Reticle myReticle;
+
 float sensitivity = 1.0f;
 // timing
 float deltaTime = 0.0f;
@@ -90,7 +93,7 @@ int main()
     // We follow the plan: one visual model, one collision model
     Model playerModel(FileSystem::getPath("resources/objects/player/Erika Archer With Bow Arrow.dae"));
     Model arrowModel(FileSystem::getPath("resources/objects/arrow/arrow.obj"));
-    Model visualModel(FileSystem::getPath("resources/objects/map/structure.obj"));
+    Model visualModel(FileSystem::getPath("resources/objects/map/map.obj"));
 	Model skyboxModel(FileSystem::getPath("resources/objects/skybox/skybox.obj"));
     //Model collisionModel(FileSystem::getPath("resources/objects/map/world/hitbox_map.obj")); 
 
@@ -186,85 +189,80 @@ int main()
     // -----------
     while (!glfwWindowShouldClose(window))
     {
-        // per-frame time logic
+        // Time logic
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        // input
+        // Input
         processInput(window, player, &camera, deltaTime);
 
-        // Update player logic (physics, collision)
-        // player.Update(deltaTime, levelColliders); //TODO: this one is needed but the map needed to be fix first
+        // Update Physics & Logic
         player->Update(deltaTime, &levelColliders);
-        enemyManager.Update(deltaTime, player->arrowManager);
-		player->arrowManager.Render(ourShader);
+        enemyManager.Update(deltaTime, player->arrowManager, *player);
+        player->arrowManager.Render(ourShader);
 
-		// Update camera position based on player
-        glm::vec3 cameraTarget = player->GetBoxCenter(); // Follow center of collision box
-        //camera.SetIsometricView(cameraTarget, 5.0f); // Initial isometric view
+        // Camera Logic
+        glm::vec3 cameraTarget = player->GetBoxCenter();
+        camera.SetIsometricView(cameraTarget, 5.0f);
 
-        // render
-        // ------
+        // Render Background
         glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        // 1. Render Static Environment
         ourShader.use();
-
-        // view/projection transformations
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
+
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
-        glm::mat4 model = glm::mat4(1.0f);
-        ourShader.setMat4("model", model);
+        ourShader.setMat4("model", glm::mat4(1.0f));
 
-        // render the visual level
-        //model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-		skyboxModel.Draw(ourShader);
+        skyboxModel.Draw(ourShader);
         visualModel.Draw(ourShader);
-		//GroundModel.Draw(ourShader);
+        GroundModel.Draw(ourShader);
 
-  //      model = glm::mat4(1.0f);
-		//model = glm::translate(model, glm::vec3(-1.0f, -0.25f, 1.0f));
-  //      model = glm::scale(model, 0.5f*glm::vec3(1.0f, 1.0f, 1.0f));
-  //      ourShader.setMat4("model", model);
-		//TargetModel.Draw(ourShader);
-
-        // Draw the yellow circle at the aim target
-        // Render the player
-
-        // One line to draw all enemies
+        // 2. Render Enemies
         enemyManager.Render(ourShader);
-        
+
+        // 3. Render Player (Animated)
         AnimationShader.use();
-        model = glm::mat4(1.0f);
-        AnimationShader.setMat4("model", model);
         AnimationShader.setMat4("projection", projection);
         AnimationShader.setMat4("view", view);
         player->Draw(AnimationShader, false);
 
+        // 4. Render UI & Reticle
         cursorShader.use();
+
+        // A. World Space UI (Reticle, Floating Health Bars)
         cursorShader.setMat4("view", view);
         cursorShader.setMat4("projection", projection);
-        model = glm::mat4(1.0f);
-        cursorShader.setMat4("model", model);
+
+        // Reticle (Follows mouse cursor in world)
         glm::vec3 flatDir = glm::normalize(glm::vec3(player->ShootDirection.x, 0.0f, player->ShootDirection.z));
         glm::vec3 reticlePos = player->Position + (flatDir * player->currentAimDist);
         myReticle.Draw(cursorShader, reticlePos);
-        // One line to draw all Health Bars
+
+        // Enemy Health Bars
         enemyManager.RenderUI(cursorShader);
 
-        //debug hit box
-        if (HITBOX) {
-            for (const Arrow& a : player->arrowManager.arrows) {
-                debugRenderer.DrawOBB(a.hitbox, view, projection);
-		    }
-            for (const auto& enemy : enemyManager.GetEnemies()) {
-                debugRenderer.DrawOBB(enemy.Collider, view, projection);
-            }
-            debugRenderer.DrawOBB(player->Collider, view, projection);
-        }
+        // B. Screen Space UI (Player Health HUD)
+        // Reset matrices to Identity so we draw in 2D Screen Coordinates (NDC)
+        cursorShader.setMat4("projection", glm::mat4(1.0f));
+        cursorShader.setMat4("view", glm::mat4(1.0f));
+
+        playerHUD.Draw(cursorShader,
+            player->CurrentHealth, player->MaxHealth,
+            player->power, player->min_power, player->max_power
+        );
+
+        // Debug Drawing (Uncomment to see hitboxes)
+        for (const Arrow& a : player->arrowManager.arrows) { debugRenderer.DrawOBB(a.hitbox, view, projection); }
+        for (const auto& enemy : enemyManager.GetEnemies()) { debugRenderer.DrawOBB(enemy.Collider, view, projection); }
+        debugRenderer.DrawOBB(player->Collider, view, projection);
+        
+
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
@@ -282,19 +280,19 @@ void processInput(GLFWwindow* window, Player* player, Camera* camera, float delt
     std::vector<int> direction = { 0,0,0,0 };
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {      
         direction[0] = 1;
-        camera->ProcessKeyboard(FORWARD, deltaTime);
+        //camera->ProcessKeyboard(FORWARD, deltaTime);
     }
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
         direction[1] = 1;
-        camera->ProcessKeyboard(LEFT, deltaTime);
+        //camera->ProcessKeyboard(LEFT, deltaTime);
     } 
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
         direction[2] = 1;
-        camera->ProcessKeyboard(BACKWARD, deltaTime);
+        //camera->ProcessKeyboard(BACKWARD, deltaTime);
     }
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
         direction[3] = 1;
-        camera->ProcessKeyboard(RIGHT, deltaTime);
+        //camera->ProcessKeyboard(RIGHT, deltaTime);
     }
 
     if (!FREECAM) {

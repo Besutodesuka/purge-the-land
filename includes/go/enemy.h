@@ -10,8 +10,8 @@
 #include <learnopengl/model.h>
 #include <go/physic.h>
 #include <go/arrow.h> 
+#include <go/player.h>
 
-// Simple struct for damage numbers
 struct FloatingText {
     glm::vec3 position;
     int value;
@@ -32,23 +32,32 @@ public:
     float CurrentHealth;
     bool IsDead;
 
+    // Attack Stats
+    float AttackRange;
+    float AttackDamage;
+    float AttackCooldown;
+    float CurrentCooldown;
+
     Model* EnemyModel;
     OBB Collider;
 
-    // Cached local bounds for OBB calculation
     glm::vec3 localColliderCenter;
     glm::vec3 localColliderExtents;
 
     std::vector<FloatingText> damageNumbers;
 
-    // Default Constructor (Required for vector)
     Enemy() : EnemyModel(nullptr), Position(0.0f), Scale(1.0f), IsDead(true) {}
 
-    // Parameterized Constructor
     Enemy(Model* model, glm::vec3 pos, float scale, float health)
         : EnemyModel(model), Position(pos), Scale(scale), RotationY(0.0f),
         MaxHealth(health), CurrentHealth(health), IsDead(false)
     {
+        // Default attack stats
+        AttackRange = 1.5f; // Close range
+        AttackDamage = 10.0f;
+        AttackCooldown = 1.0f; // Seconds between hits
+        CurrentCooldown = 0.0f;
+
         InitCollider();
         UpdateOBB();
     }
@@ -82,11 +91,16 @@ public:
     void Update(float deltaTime) {
         if (IsDead) return;
 
+        // Update Cooldown
+        if (CurrentCooldown > 0.0f) {
+            CurrentCooldown -= deltaTime;
+        }
+
         // Floating Text Logic
         for (auto& txt : damageNumbers) {
             txt.lifeTime -= deltaTime;
             txt.alpha = std::max(0.0f, txt.lifeTime);
-            txt.position.y += deltaTime * 1.5f; // Float speed
+            txt.position.y += deltaTime * 1.5f; 
         }
         damageNumbers.erase(std::remove_if(damageNumbers.begin(), damageNumbers.end(),
             [](const FloatingText& t) { return t.lifeTime <= 0.0f; }), damageNumbers.end());
@@ -96,7 +110,6 @@ public:
         if (IsDead) return;
         CurrentHealth -= amount;
 
-        // Spawn Text
         FloatingText txt;
         txt.position = Position + glm::vec3(0.0f, Collider.halfExtents.y * 2.0f + 0.5f, 0.0f);
         txt.value = amount;
@@ -107,11 +120,22 @@ public:
         if (CurrentHealth <= 0.0f) {
             CurrentHealth = 0.0f;
             IsDead = true;
-			// Optionally: Add death animation or effects here
-			// disable collider
-			Collider.halfExtents = glm::vec3(0.0f);
-			// self destruct after a delay could be implemented here
+            Collider.halfExtents = glm::vec3(0.0f);
+        }
+    }
 
+    // --- NEW: ATTACK LOGIC ---
+    void CheckAttack(Player& player) {
+        if (IsDead || player.IsDead) return;
+
+        // Simple distance check (cylindrical approximation)
+        float dist = glm::distance(glm::vec3(Position.x, 0, Position.z), glm::vec3(player.Position.x, 0, player.Position.z));
+
+        if (dist <= AttackRange && CurrentCooldown <= 0.0f) {
+            // Attack!
+            player.TakeDamage(AttackDamage);
+            CurrentCooldown = AttackCooldown; 
+            std::cout << "Enemy hit Player! HP: " << player.CurrentHealth << std::endl;
         }
     }
 
@@ -146,9 +170,7 @@ public:
         float healthPct = CurrentHealth / MaxHealth;
         glm::vec3 barPos = Position + glm::vec3(0.0f, Collider.halfExtents.y * 2.0f + 0.2f, 0.0f);
 
-        // Red Back
         DrawBillboard(uiShader, healthBarVAO, barPos, 1.0f, 0.1f, glm::vec3(0.8f, 0.8f, 0.8f));
-        // Green Front
         DrawBillboard(uiShader, healthBarVAO, barPos + glm::vec3(0.0f, 0.0f, 0.01f), healthPct, 0.1f, glm::vec3(0.0f, 0.8f, 0.0f));
     }
 
@@ -166,12 +188,12 @@ private:
 };
 
 // ==========================================
-// ENEMY MANAGER (Handles logic for all enemies)
+// ENEMY MANAGER
 // ==========================================
 class EnemyManager {
 public:
     std::vector<Enemy> enemies;
-    Model* SharedModel; // Assuming enemies share a model for now
+    Model* SharedModel; 
 
     EnemyManager() : SharedModel(nullptr) {}
 
@@ -184,47 +206,41 @@ public:
         enemies.emplace_back(SharedModel, position, scale, health);
     }
 
-    // --- MAIN UPDATE LOOP ---
-    // 1. Updates Enemy Logic
-    // 2. Checks Collision with Arrows from the ArrowManager
-    void Update(float deltaTime, ArrowManager& arrowManager) {
+    void Update(float deltaTime, ArrowManager& arrowManager, Player& player) {
         for (auto& enemy : enemies) {
             if (enemy.IsDead) continue;
 
-            // 1. Update Enemy Logic (Text floating, etc.)
+            // 1. Update Enemy Logic
             enemy.Update(deltaTime);
 
-            // 2. Check Collisions against Arrows
+            // 2. Check Attack on Player (NEW)
+            enemy.CheckAttack(player);
+
+            // 3. Check Collisions against Arrows
             for (Arrow& arrow : arrowManager.arrows) {
                 if (!arrow.active) continue;
 
                 if (TestOBBOBB(enemy.Collider, arrow.hitbox)) {
-                    // HIT!
-                    arrow.active = false;      // Deactivate arrow
+                    arrow.active = false;      
                     arrow.velocity = glm::vec3(0.0f);
-
-                    enemy.TakeDamage(25);      // Damage Enemy
-                    printf("Hit Enemy! Remaining HP: %.0f\n", enemy.CurrentHealth);
+                    enemy.TakeDamage(25);      
                 }
             }
         }
     }
 
-    // --- RENDER MODELS ---
     void Render(Shader& shader) {
         for (auto& enemy : enemies) {
             enemy.Draw(shader);
         }
     }
 
-    // --- RENDER UI (Health Bars) ---
     void RenderUI(Shader& shader) {
         for (auto& enemy : enemies) {
             enemy.DrawHealthBar(shader);
         }
     }
 
-    // Helper for Debug Renderer
     const std::vector<Enemy>& GetEnemies() const {
         return enemies;
     }
