@@ -26,10 +26,6 @@
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
-// Modified processInput to pass the player
-//void processInput(GLFWwindow* window, Player* player, Camera* camera, float deltaTime);
-//glm::vec3 GetRayFromMouse(float mouseX, float mouseY, int screenW, int screenH, glm::mat4 view, glm::mat4 projection);
-
 void processGameplayInput(GLFWwindow* window, Player* player, Camera* camera, float deltaTime);
 
 enum GameState {
@@ -81,9 +77,9 @@ void ResetGame() {
     if (player) player->Reset();
     if (player) player->arrowManager.arrows.clear();
     enemyManager.Reset();
-    enemyManager.Spawn(glm::vec3(5.0f, 0.5f, 5.0f), 0.2f, 100.0f);
-    enemyManager.Spawn(glm::vec3(-5.0f, 0.5f, 5.0f), 0.2f, 100.0f);
-    enemyManager.Spawn(glm::vec3(0.0f, 0.5f, -8.0f), 0.3f, 150.0f);
+    enemyManager.Spawn(glm::vec3(5.0f, 0.5f, 5.0f), 0.5f, 100.0f);
+    enemyManager.Spawn(glm::vec3(-5.0f, 0.5f, 5.0f), 0.5f, 100.0f);
+    enemyManager.Spawn(glm::vec3(0.0f, 0.5f, -8.0f), 0.5f, 150.0f);
     gameState = GAME_PLAYING;
 }
 
@@ -138,6 +134,7 @@ int main()
 	Model skyboxModel(FileSystem::getPath("resources/objects/skybox/skybox.obj"));
     Model GroundModel(FileSystem::getPath("resources/objects/ground/ground.obj"));
     Model TargetModel(FileSystem::getPath("resources/objects/target/target.obj"));
+    Model skeletonModel(FileSystem::getPath("resources/objects/enemy/skelly.dae"));
     //Model collisionModel(FileSystem::getPath("resources/objects/map/world/hitbox_map.obj")); 
 
     glm::vec3 playerStartPos(10.0f, 70.0f, 10.0f);
@@ -174,10 +171,11 @@ int main()
         std::cout << "       Solution: Export your OBJ with 'Split by Objects' or 'Keep Vertex Order'." << std::endl;
     }
 
-    enemyManager.Init(&TargetModel);
-    enemyManager.Spawn(glm::vec3(5.0f, 0.5f, 5.0f), 0.2f, 100.0f);
-    enemyManager.Spawn(glm::vec3(-5.0f, 0.5f, 5.0f), 0.2f, 100.0f);
-    enemyManager.Spawn(glm::vec3(0.0f, 0.5f, -8.0f), 0.3f, 150.0f);
+    enemyManager.Init(&skeletonModel, &player->GroundModel);
+    /*enemyManager.Spawn(glm::vec3(5.0f, 10.0f, 5.0f), 0.5f, 100.0f); 
+    enemyManager.Spawn(glm::vec3(-10.0f, 10.0f, 10.0f), 0.5f, 100.0f);
+    enemyManager.Spawn(glm::vec3(-15.0f, 10.0f, 10.0f), 0.5f, 100.0f);*/
+    enemyManager.Spawn(glm::vec3(-10.0f, 10.0f, 5.0f), 0.5f, 100.0f);
     levelColliders = GenerateOBBsFromModel(visualModel, levelMatrix);
 
     debugRenderer.Init();
@@ -265,8 +263,12 @@ int main()
         skyboxModel.Draw(ourShader);
         visualModel.Draw(ourShader);
         GroundModel.Draw(ourShader);
-        enemyManager.Render(ourShader);
 
+        AnimationShader.use();
+        AnimationShader.setMat4("projection", projection);
+        AnimationShader.setMat4("view", view);
+        enemyManager.Render(AnimationShader);
+     
         if (!player->IsDead) {
             AnimationShader.use();
             AnimationShader.setMat4("projection", projection);
@@ -287,9 +289,18 @@ int main()
 
         if (showDebugHitboxes) {
             debugRenderer.DrawOBB(player->Collider, view, projection);
-            for (const auto& enemy : enemyManager.GetEnemies()) debugRenderer.DrawOBB(enemy.Collider, view, projection);
-            for (const Arrow& a : player->arrowManager.arrows) if (a.active) debugRenderer.DrawOBB(a.hitbox, view, projection);
-            for (const OBB& wall : levelColliders) debugRenderer.DrawOBB(wall, view, projection);
+
+            for (const auto& enemy : enemyManager.GetEnemies()) {
+                debugRenderer.DrawOBB(enemy->Collider, view, projection);
+            }
+
+            for (const Arrow& a : player->arrowManager.arrows) {
+                if (a.active) debugRenderer.DrawOBB(a.hitbox, view, projection);
+            }
+
+            for (const OBB& wall : levelColliders) {
+                debugRenderer.DrawOBB(wall, view, projection);
+            }
         }
 
         // Screen UI

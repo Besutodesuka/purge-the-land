@@ -205,7 +205,7 @@ public:
 
         charState = IDLE;
         blendAmount = 0.0f;
-        blendRate = 4.0f; 
+        blendRate = 3.0f; 
 
         requestWalkForward = false;
         requestWalkBackward = false;
