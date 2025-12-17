@@ -134,6 +134,7 @@ int main()
     Model arrowModel(FileSystem::getPath("resources/objects/arrow/arrow.obj"));
     Model visualModel(FileSystem::getPath("resources/objects/map/structure.obj"));
 	//Model skyboxModel(FileSystem::getPath("resources/objects/skybox/skybox.obj"));
+    Model DecorationModel(FileSystem::getPath("resources/objects/map/decorations.obj"));
     Model GroundModel(FileSystem::getPath("resources/objects/map/ground.obj"));
     Model TargetModel(FileSystem::getPath("resources/objects/target/target.obj"));
     Model skeletonModel(FileSystem::getPath("resources/objects/enemy/skelly.dae"));
@@ -277,6 +278,7 @@ int main()
 
         // Light Color (High intensity because PBR uses physical falloff)
         ourShader.setVec3("lightColor", glm::vec3(20.0f, 10.0f, 1.0f) * 10.0f);
+        DecorationModel.Draw(ourShader);
         visualModel.Draw(ourShader);
         GroundModel.Draw(ourShader);
 
