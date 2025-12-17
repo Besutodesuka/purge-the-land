@@ -236,7 +236,7 @@ public:
                 }
 
                 // 2. Deal Damage
-                // Only hits if we passed the 1.0s mark and haven't hit yet in this specific loop
+                // Only hits if we passed the 1.2s mark and haven't hit yet in this specific loop
                 if (animator->m_CurrentTime >= hitTimeTicks && !HasHit) {
                     player.TakeDamage(AttackDamage);
                     HasHit = true;

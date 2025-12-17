@@ -102,8 +102,7 @@ public:
     // Call this after drawing the 3D world.
     // Shader must have Projection/View set to Identity.
     // Updated to include Skill Cooldowns
-    void Draw(Shader& shader, float currentHealth, float maxHealth, float currentPower, float minPower, float maxPower, 
-              float dashCooldown, float maxDashCooldown, float healCooldown, float maxHealCooldown) 
+    void Draw(Shader& shader, float currentHealth, float maxHealth, float currentPower, float minPower, float maxPower, float dashCooldown, float maxDashCooldown, float healCooldown, float maxHealCooldown) 
     {
         if (!initialized) SetupMesh();
 
