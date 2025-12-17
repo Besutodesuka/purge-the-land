@@ -77,7 +77,7 @@ public:
             spawnPos.y = Position.y; // Assumes flat ground for simplicity
 
             // Spawn and track the pointer
-            enemyMgr.Spawn(spawnPos, 0.5f, 100.0f);
+            enemyMgr.Spawn(spawnPos, Scale, 100.0f);
             
             // The newly added enemy is the last one in the manager's list
             if (!enemyMgr.enemies.empty()) {

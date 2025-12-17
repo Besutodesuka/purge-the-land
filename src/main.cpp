@@ -157,7 +157,7 @@ int main()
     // Create the Player
     glm::vec3 playerStartPos(0.0f, 10.0f, 0.0f);
     glm::vec3 playerBoxSize(0.2f, 0.35f, 0.4f); // get collision box from AABB function/static for optimization maybe visualize them to see if it is ok or not
-    float playerModelScale = 0.5f;
+    float playerModelScale = 1.0f;
     player = new Player(&playerModel, playerStartPos, playerBoxSize, playerModelScale);
     player->SetGroundModel(&GroundModel);
     player->SetArrowManager(&arrowModel, 0.01f);
@@ -360,7 +360,7 @@ int main()
         AnimationShader.setMat4("projection", projection);
         AnimationShader.setMat4("view", view);
         enemyManager.Render(AnimationShader);
-     
+        ourShader.setMat4("model", glm::mat4(1.0f));
         if (!player->IsDead) {
             AnimationShader.use();
             AnimationShader.setMat4("projection", projection);
