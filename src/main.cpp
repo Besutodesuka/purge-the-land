@@ -33,7 +33,8 @@ void processGameplayInput(GLFWwindow* window, Player* player, Camera* camera, fl
 enum GameState {
     GAME_PLAYING,
     GAME_PAUSED,
-    GAME_OVER
+    GAME_OVER,
+    GAME_VICTORY
 };
 GameState gameState = GAME_PLAYING;
 
@@ -62,6 +63,7 @@ PlayerHUD playerHUD;
 Reticle myReticle;
 GameOverScreen gameOverScreen; 
 PauseScreen pauseScreen;
+VictoryScreen victoryScreen;
 TextRenderer textRenderer;
 
 float sensitivity = 1.0f;
@@ -232,6 +234,13 @@ int main()
                 gameState = GAME_OVER;
                 glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
             }
+
+            // Check Victory Condition (Spawner Destroyed)
+            if (mobSpawner && mobSpawner->IsDestroyed) {
+                gameState = GAME_VICTORY;
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            }
+
             processGameplayInput(window, player, &camera, deltaTime);
             player->Update(deltaTime, &levelColliders);
 
@@ -275,11 +284,25 @@ int main()
                 double mx, my;
                 glfwGetCursorPos(window, &mx, &my);
                 int action = gameOverScreen.ProcessClick((float)mx, (float)my, SCR_WIDTH, SCR_HEIGHT);
-                if (action == 1) {
+                if (action == 1) { // Retry
                     ResetGame();
                     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
                 }
-                else if (action == 2) {
+                else if (action == 2) { // Quit
+                    glfwSetWindowShouldClose(window, true);
+                }
+            }
+        }
+        else if (gameState == GAME_VICTORY) {
+            if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+                double mx, my;
+                glfwGetCursorPos(window, &mx, &my);
+                int action = victoryScreen.ProcessClick((float)mx, (float)my, SCR_WIDTH, SCR_HEIGHT);
+                if (action == 1) { // Retry
+                    ResetGame();
+                    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                }
+                else if (action == 2) { // Quit
                     glfwSetWindowShouldClose(window, true);
                 }
             }
@@ -381,6 +404,9 @@ int main()
         }
         else if (gameState == GAME_OVER) {
             gameOverScreen.Draw(cursorShader, textRenderer, SCR_WIDTH, SCR_HEIGHT);
+        }
+        else if (gameState == GAME_VICTORY) {
+            victoryScreen.Draw(cursorShader, textRenderer, SCR_WIDTH, SCR_HEIGHT);
         }
         playerHUD.Draw(cursorShader,
             player->CurrentHealth, player->MaxHealth,

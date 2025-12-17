@@ -178,4 +178,60 @@ public:
     }
 };
 
+class VictoryScreen : public MenuBase {
+public:
+    Button retryBtn;
+    Button quitBtn;
+
+    VictoryScreen() {
+        retryBtn.position = glm::vec2(0.0f, 0.1f);
+        retryBtn.size = glm::vec2(0.4f, 0.15f);
+        retryBtn.color = glm::vec4(0.0f, 0.6f, 0.0f, 1.0f); // Green
+
+        quitBtn.position = glm::vec2(0.0f, -0.2f);
+        quitBtn.size = glm::vec2(0.4f, 0.15f);
+        quitBtn.color = glm::vec4(0.6f, 0.0f, 0.0f, 1.0f); // Red
+    }
+
+    void Draw(Shader& shader, TextRenderer& tr, int screenW, int screenH) {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDisable(GL_DEPTH_TEST);
+
+        // 1. Draw UI Shapes
+        shader.use();
+        // Golden tint background
+        DrawQuad(shader, glm::vec2(0.0f, 0.0f), glm::vec2(2.0f, 2.0f), glm::vec4(0.2f, 0.2f, 0.0f, 0.8f)); 
+        DrawQuad(shader, retryBtn.position, retryBtn.size, retryBtn.color);
+        DrawQuad(shader, quitBtn.position, quitBtn.size, quitBtn.color);
+
+        // 2. Draw Text
+        // Main Title: "Congratulations"
+        // Centering calculation (approximate based on text length)
+        float titleX = screenW * 0.25f; 
+        float titleY = screenH * 0.80f;
+        tr.RenderText("CONGRATULATIONS", titleX, titleY, 2.0f, glm::vec3(1.0f, 0.84f, 0.0f)); // Gold Color
+
+        // Subtitle: "The land has been purged"
+        float subTitleX = screenW * 0.32f;
+        float subTitleY = screenH * 0.70f;
+        tr.RenderText("The land has been purged", subTitleX, subTitleY, 1.2f, glm::vec3(1.0f, 1.0f, 1.0f));
+
+        // Buttons
+        DrawButtonText(tr, retryBtn, "RETRY", screenW, screenH, 1.0f);
+        DrawButtonText(tr, quitBtn, "QUIT", screenW, screenH, 1.0f);
+
+        glEnable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND);
+    }
+
+    int ProcessClick(float mouseX, float mouseY, int screenWidth, int screenHeight) {
+        float ndcX = (2.0f * mouseX) / screenWidth - 1.0f;
+        float ndcY = 1.0f - (2.0f * mouseY) / screenHeight; 
+        if (retryBtn.IsClicked(ndcX, ndcY)) return 1;
+        if (quitBtn.IsClicked(ndcX, ndcY)) return 2;
+        return 0;
+    }
+};
+
 #endif
