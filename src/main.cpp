@@ -201,6 +201,7 @@ int main()
         );
 		
         mobSpawner->InitialSpawn(enemyManager);
+		//mobSpawner->IsDestroyed = true; // Start inactive to debug win screen
         mobSpawners.push_back(*mobSpawner);
     }
 
@@ -248,7 +249,13 @@ int main()
             }
 
             // Check Victory Condition (Spawner Destroyed)
-            if (mobSpawner && mobSpawner->IsDestroyed) {
+            bool all_destroyed = true;
+            for (auto& spawner : mobSpawners) {
+                if (&spawner && !spawner.IsDestroyed) {
+					all_destroyed = false;
+                }
+			}
+            if (all_destroyed) {
                 gameState = GAME_VICTORY;
                 glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
             }
