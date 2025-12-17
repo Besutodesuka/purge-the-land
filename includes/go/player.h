@@ -21,8 +21,17 @@
 
 // Player physics constants
 const float GRAVITY = -9.8f;
-const float JUMP_FORCE = 4.0f;
+// const float JUMP_FORCE = 4.0f; // Removed
 const float PLAYER_SPEED = 4.0f;
+
+// --- DASH CONSTANTS ---
+const float DASH_SPEED = 10.0f;       
+const float DASH_DURATION = 0.25f;    
+const float DASH_COOLDOWN = 2.0f;     
+
+// --- HEAL CONSTANTS ---
+const float HEAL_COOLDOWN = 30.0f;
+const float HEAL_AMOUNT = 30.0f;
 
 class Player {
 public:
@@ -51,6 +60,11 @@ public:
     bool IsGrounded;
     bool isAiming;
     bool isShooting;
+
+    // --- SKILL VARIABLES ---
+    float currentDashDuration; 
+    float currentDashCooldown; 
+    float currentHealCooldown;
 
     // Health Stats
     float MaxHealth;
@@ -125,6 +139,11 @@ public:
         CurrentHealth = 100.0f;
         IsDead = false;
 
+        // Initialize Cooldowns
+        currentDashDuration = 0.0f;
+        currentDashCooldown = 0.0f;
+        currentHealCooldown = 0.0f;
+
         Collider.halfExtents = boxSize * 0.5f;
         HeightOffset = boxSize.y / 2.0f;
         SyncColliders();
@@ -134,8 +153,30 @@ public:
         isShooting = false;
         recoilTimer = 0.0f;
 
-        // Initialize Animation Data
+        this->startPosition = startPos;
         InitAnimations();
+    }
+
+     void Reset() {
+        Position = startPosition;
+        CurrentHealth = MaxHealth;
+        IsDead = false;
+        isAiming = false;
+        isShooting = false;
+        Velocity = glm::vec3(0.0f);
+        IsGrounded = false;
+        power = min_power;
+
+        currentDashDuration = 0.0f;
+        currentDashCooldown = 0.0f;
+        currentHealCooldown = 0.0f;
+        
+        // Reset Animation
+        charState = IDLE;
+        animator->PlayAnimation(idleAnimation, NULL, 0.0f, 0.0f, 0.0f);
+        
+        // Sync Physics
+        SyncColliders();
     }
 
     // Destructor
@@ -166,6 +207,16 @@ public:
         }
     }
 
+    void Heal() {
+        if (IsDead) return;
+        if (currentHealCooldown <= 0.0f && CurrentHealth < MaxHealth) {
+            CurrentHealth += HEAL_AMOUNT;
+            if (CurrentHealth > MaxHealth) CurrentHealth = MaxHealth;
+            currentHealCooldown = HEAL_COOLDOWN;
+            std::cout << "Player Healed! HP: " << CurrentHealth << std::endl;
+        }
+    }
+
     // --- INITIALIZATION ---
     void InitAnimations() {
         // Standard Set (No Aim)
@@ -187,7 +238,7 @@ public:
 
         charState = IDLE;
         blendAmount = 0.0f;
-        blendRate = 4.0f; 
+        blendRate = 3.0f; 
 
         requestWalkForward = false;
         requestWalkBackward = false;
@@ -265,47 +316,44 @@ public:
     }
 
     void ProcessKeyboard(const glm::vec3& camFront, const glm::vec3& camRight, std::vector<int> direction, float deltaTime) {
-        requestWalkForward = false;
-        requestWalkBackward = false;
-        requestWalkLeft = false;
-        requestWalkRight = false;
+        if (currentDashDuration > 0.0f) return;
+        requestWalkForward = false; requestWalkBackward = false; requestWalkLeft = false; requestWalkRight = false;
 
-        float velocity = isAiming ? PLAYER_SPEED * 0.6f : PLAYER_SPEED; 
+        float velocity = isAiming ? PLAYER_SPEED * 0.6f : PLAYER_SPEED;
         glm::vec3 moveDirection(0.0f);
-
         glm::vec3 camForwardHorizontal = glm::normalize(glm::vec3(camFront.x, 0.0f, camFront.z));
         glm::vec3 camRightHorizontal = glm::normalize(glm::vec3(camRight.x, 0.0f, camRight.z));
-
         if (direction[0] == 1) { moveDirection += camForwardHorizontal; requestWalkForward = true; }
         if (direction[1] == 1) { moveDirection -= camRightHorizontal; requestWalkLeft = true; }
         if (direction[2] == 1) { moveDirection -= camForwardHorizontal; requestWalkBackward = true; }
         if (direction[3] == 1) { moveDirection += camRightHorizontal; requestWalkRight = true; }
-
         if (glm::length(moveDirection) > 0.0f) {
             moveDirection = glm::normalize(moveDirection);
-            Velocity.x = moveDirection.x * velocity;
-            Velocity.z = moveDirection.z * velocity;
-
-            if (!isAiming) {
-                RotationY = glm::degrees(atan2(moveDirection.x, moveDirection.z));
-            }
-        }
-        else {
-            Velocity.x = 0.0f;
-            Velocity.z = 0.0f;
-        }
+            Velocity.x = moveDirection.x * velocity; Velocity.z = moveDirection.z * velocity;
+            if (!isAiming) RotationY = glm::degrees(atan2(moveDirection.x, moveDirection.z));
+        } else { Velocity.x = 0.0f; Velocity.z = 0.0f; }
     }
 
-    void Jump() {
-        if (IsGrounded) {
-            Velocity.y = JUMP_FORCE;
-            IsGrounded = false;
+     void Dash() {
+        if (currentDashCooldown <= 0.0f && !isAiming) {
+            float angleRad = glm::radians(RotationY);
+            glm::vec3 dashDir;
+            dashDir.x = sin(angleRad); dashDir.z = cos(angleRad); dashDir.y = 0.0f;
+            dashDir = glm::normalize(dashDir);
+            Velocity.x = dashDir.x * DASH_SPEED; Velocity.z = dashDir.z * DASH_SPEED;
+            currentDashDuration = DASH_DURATION;
+            currentDashCooldown = DASH_COOLDOWN;
         }
     }
 
     // --- PHYSICS & UPDATE ---
 
     void Update(float deltaTime, const std::vector<OBB>* levelColliders = nullptr) {
+        // Update Dash Timers
+        if (currentDashDuration > 0.0f) currentDashDuration -= deltaTime;
+        if (currentDashCooldown > 0.0f) currentDashCooldown -= deltaTime;
+        if (currentHealCooldown > 0.0f) currentHealCooldown -= deltaTime;
+
         UpdatePhysics(deltaTime, levelColliders);
         static std::vector<OBB> empty;
         arrowManager.Update(deltaTime, levelColliders ? *levelColliders : empty);
@@ -322,8 +370,17 @@ public:
         if (levelColliders) {
             for (const OBB& wall : *levelColliders) {
                 if (TestOBBOBB(Collider, wall)) {
+                    // Simple collision resolution
                     Position.x -= Velocity.x * deltaTime;
                     Position.z -= Velocity.z * deltaTime;
+                    
+                    // Stop dash on wall hit
+                    if (currentDashDuration > 0.0f) {
+                        currentDashDuration = 0.0f;
+                        Velocity.x = 0;
+                        Velocity.z = 0;
+                    }
+                    
                     SyncColliders();
                     break;
                 }
@@ -593,6 +650,8 @@ public:
     Player& operator=(const Player&) = delete;
 
 private:
+    glm::vec3 startPosition;
+    
     void ApplyGravity(float deltaTime) {
         if (!IsGrounded) {
             Velocity.y += GRAVITY * deltaTime;

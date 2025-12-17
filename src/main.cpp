@@ -17,6 +17,8 @@
 #include <go/arrow.h>
 #include <go/debug_renderer.h>
 #include <go/enemy.h>
+#include <go/menu.h>
+#include <go/text_renderer.h>
 
 #include <algorithm>
 #include <iostream>
@@ -25,9 +27,19 @@
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
-// Modified processInput to pass the player
-void processInput(GLFWwindow* window, Player* player, Camera* camera, float deltaTime);
-glm::vec3 GetRayFromMouse(float mouseX, float mouseY, int screenW, int screenH, glm::mat4 view, glm::mat4 projection);
+void processGameplayInput(GLFWwindow* window, Player* player, Camera* camera, float deltaTime);
+
+enum GameState {
+    GAME_PLAYING,
+    GAME_PAUSED,
+    GAME_OVER
+};
+GameState gameState = GAME_PLAYING;
+
+// Helper for toggle
+bool escPressedLastFrame = false;
+bool showDebugHitboxes = false;
+bool f3PressedLastFrame = false;
 
 // settings
 const unsigned int SCR_WIDTH = 1980;
@@ -47,21 +59,31 @@ bool firstMouse = true;
 // UI Elements
 PlayerHUD playerHUD;
 Reticle myReticle;
+GameOverScreen gameOverScreen; 
+PauseScreen pauseScreen;
+TextRenderer textRenderer;
 
 float sensitivity = 1.0f;
 // timing
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-DebugRenderer debugRenderer;
 // state
-int BowMode = 0; // 0 = idle, 1 = draw, 2 = shoot
-
-// Scene collision boxes
+//int BowMode = 0; // 0 = idle, 1 = draw, 2 = shoot
+DebugRenderer debugRenderer;
 std::vector<OBB> levelColliders;
-
 EnemyManager enemyManager;
 
+// Reset Game Helper
+void ResetGame() {
+    if (player) player->Reset();
+    if (player) player->arrowManager.arrows.clear();
+    enemyManager.Reset();
+    enemyManager.Spawn(glm::vec3(5.0f, 0.5f, 5.0f), 0.5f, 100.0f);
+    enemyManager.Spawn(glm::vec3(-5.0f, 0.5f, 5.0f), 0.5f, 100.0f);
+    enemyManager.Spawn(glm::vec3(0.0f, 0.5f, -8.0f), 0.5f, 150.0f);
+    gameState = GAME_PLAYING;
+}
 
 int main()
 {
@@ -73,30 +95,48 @@ int main()
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
+
     GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Purge the land", NULL, NULL);
-    if (window == NULL) { /* ... error check ... */ return -1; }
+    if (window == NULL) { return -1; }
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) { /* ... error check ... */ return -1; }
-    // ------------------------------------------------------------------
 
-    stbi_set_flip_vertically_on_load(true); // Most OBJ models need this
-	glEnable(GL_DEPTH_TEST);// Enable depth testing ensure rendering order
+    // Start locked
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) { return -1; }
+
+    stbi_set_flip_vertically_on_load(true);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND); // Enable blending globally for text
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     // Build and compile shaders
     Shader ourShader("1.model_loading.vs", "1.model_loading.fs");
-    Shader cursorShader("crosshair.vs", "crosshair.fs");
     Shader AnimationShader("anim_model.vs", "anim_model.fs");
+    Shader cursorShader("ui.vs", "ui.fs");
+    //Shader cursorShader("crosshair.vs", "crosshair.fs");
+
+    // INIT TEXT RENDERER
+    std::cout << "Initializing Text Renderer..." << std::endl;
+    textRenderer.Init(
+        SCR_WIDTH,
+        SCR_HEIGHT,
+        "text.vs",
+        "text.fs",
+        FileSystem::getPath("resources/fonts/Antonio-Bold.ttf").c_str()
+    );
 
     // Load models
-    // We follow the plan: one visual model, one collision model
     Model playerModel(FileSystem::getPath("resources/objects/player/Erika Archer With Bow Arrow.dae"));
     Model arrowModel(FileSystem::getPath("resources/objects/arrow/arrow.obj"));
     Model visualModel(FileSystem::getPath("resources/objects/map/structure.obj"));
 	//Model skyboxModel(FileSystem::getPath("resources/objects/skybox/skybox.obj"));
+    Model GroundModel(FileSystem::getPath("resources/objects/ground/ground.obj"));
+    Model TargetModel(FileSystem::getPath("resources/objects/target/target.obj"));
+    Model skeletonModel(FileSystem::getPath("resources/objects/enemy/skelly.dae"));
     //Model collisionModel(FileSystem::getPath("resources/objects/map/world/hitbox_map.obj")); 
 
     // Create the Player
@@ -104,10 +144,8 @@ int main()
     glm::vec3 playerBoxSize(0.2f, 0.35f, 0.4f); // get collision box from AABB function/static for optimization maybe visualize them to see if it is ok or not
     float playerModelScale = 2.0f;
     player = new Player(&playerModel, playerStartPos, playerBoxSize, playerModelScale);
-	Model GroundModel(FileSystem::getPath("resources/objects/map/ground.obj"));
-	Model TargetModel(FileSystem::getPath("resources/objects/target/target.obj"));
-	player->SetGroundModel(&GroundModel);
-	player->SetArrowManager(&arrowModel, 0.01f);
+    player->SetGroundModel(&GroundModel);
+    player->SetArrowManager(&arrowModel, 0.01f);
 
     // ------------------------------------------------------------------
     // Generate Hitboxes (Auto-Generate from Visual Model)
@@ -135,18 +173,11 @@ int main()
         std::cout << "       Solution: Export your OBJ with 'Split by Objects' or 'Keep Vertex Order'." << std::endl;
     }
 
-    // Spawn 3 enemies at different locations
-    //enemies.emplace_back(&arrowModel, glm::vec3(5.0f, 0.5f, 5.0f), 0.5f, 100.0f);
-    //enemies.emplace_back(&TargetModel, glm::vec3(-5.0f, 0.5f, 5.0f), 10.0f, 100.0f);
-    //enemies.emplace_back(&TargetModel, glm::vec3(0.0f, 0.5f, -8.0f), 15.0f, 150.0f); // Big boss
-
-    // 2. Init Manager
-    enemyManager.Init(&TargetModel);
-
-    // 3. Spawn Enemies (Note the smaller scale!)
-    enemyManager.Spawn(glm::vec3(5.0f, 0.5f, 5.0f), 0.2f, 100.0f);
-    enemyManager.Spawn(glm::vec3(-5.0f, 0.5f, 5.0f), 0.2f, 100.0f);
-    enemyManager.Spawn(glm::vec3(0.0f, 0.5f, -8.0f), 0.3f, 150.0f);
+    enemyManager.Init(&skeletonModel, &player->GroundModel);
+    //enemyManager.Spawn(glm::vec3(5.0f, 10.0f, 5.0f), 0.5f, 100.0f); 
+    enemyManager.Spawn(glm::vec3(-10.0f, 10.0f, 10.0f), 0.5f, 100.0f);
+    enemyManager.Spawn(glm::vec3(-15.0f, 10.0f, 10.0f), 0.5f, 100.0f);
+    //enemyManager.Spawn(glm::vec3(-10.0f, 10.0f, 5.0f), 0.5f, 100.0f);
     levelColliders = GenerateOBBsFromModel(visualModel, levelMatrix);
 
     debugRenderer.Init();
@@ -155,17 +186,70 @@ int main()
     lastFrame = static_cast<float>(glfwGetTime());
     while (!glfwWindowShouldClose(window))
     {
-        // Time logic
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        // Input
-        processInput(window, player, &camera, deltaTime);
+        // Global Input
+        bool escPressed = (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS);
+        if (escPressed && !escPressedLastFrame) {
+            if (gameState == GAME_PLAYING) {
+                gameState = GAME_PAUSED;
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            }
+            else if (gameState == GAME_PAUSED) {
+                gameState = GAME_PLAYING;
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            }
+        }
+        escPressedLastFrame = escPressed;
 
-        // Update Physics & Logic
-        player->Update(deltaTime, &levelColliders);
-        enemyManager.Update(deltaTime, player->arrowManager, *player);
+        bool f3Pressed = (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS);
+        if (f3Pressed && !f3PressedLastFrame) {
+            showDebugHitboxes = !showDebugHitboxes;
+        }
+        f3PressedLastFrame = f3Pressed;
+
+        // Logic
+        if (gameState == GAME_PLAYING) {
+            if (player->IsDead) {
+                gameState = GAME_OVER;
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            }
+            processGameplayInput(window, player, &camera, deltaTime);
+            player->Update(deltaTime, &levelColliders);
+            enemyManager.Update(deltaTime, player->arrowManager, *player);
+            camera.SetIsometricView(player->GetBoxCenter(), 5.0f);
+        }
+        else if (gameState == GAME_PAUSED) {
+            if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+                double mx, my;
+                glfwGetCursorPos(window, &mx, &my);
+                int action = pauseScreen.ProcessClick((float)mx, (float)my, SCR_WIDTH, SCR_HEIGHT);
+                if (action == 1) {
+                    gameState = GAME_PLAYING;
+                    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                }
+                else if (action == 2) {
+                    glfwSetWindowShouldClose(window, true);
+                }
+            }
+        }
+        else if (gameState == GAME_OVER) {
+            if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+                double mx, my;
+                glfwGetCursorPos(window, &mx, &my);
+                int action = gameOverScreen.ProcessClick((float)mx, (float)my, SCR_WIDTH, SCR_HEIGHT);
+                if (action == 1) {
+                    ResetGame();
+                    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                }
+                else if (action == 2) {
+                    glfwSetWindowShouldClose(window, true);
+                }
+            }
+        }
+
         player->arrowManager.Render(ourShader);
 
         // Camera Logic
@@ -173,14 +257,13 @@ int main()
         if(!FREECAM) camera.SetIsometricView(cameraTarget, camera_distance);
 
         // Render Background
+        // Render
         glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // 1. Render Static Environment
         ourShader.use();
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
-
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
         ourShader.setMat4("model", glm::mat4(1.0f));
@@ -196,35 +279,67 @@ int main()
         visualModel.Draw(ourShader);
         GroundModel.Draw(ourShader);
 
-        // 2. Render Enemies
-        enemyManager.Render(ourShader);
-
-        // 3. Render Player (Animated)
         AnimationShader.use();
         AnimationShader.setMat4("projection", projection);
         AnimationShader.setMat4("view", view);
-        player->Draw(AnimationShader, false);
+        enemyManager.Render(AnimationShader);
+     
+        if (!player->IsDead) {
+            AnimationShader.use();
+            AnimationShader.setMat4("projection", projection);
+            AnimationShader.setMat4("view", view);
+            player->Draw(AnimationShader, false);
+        }
 
-        // 4. Render UI & Reticle
         cursorShader.use();
-
-        // A. World Space UI (Reticle, Floating Health Bars)
         cursorShader.setMat4("view", view);
         cursorShader.setMat4("projection", projection);
 
-        // Reticle (Follows mouse cursor in world)
-        glm::vec3 flatDir = glm::normalize(glm::vec3(player->ShootDirection.x, 0.0f, player->ShootDirection.z));
-        glm::vec3 reticlePos = player->Position + (flatDir * player->currentAimDist);
-        myReticle.Draw(cursorShader, reticlePos);
+        if (gameState == GAME_PLAYING || gameState == GAME_PAUSED) {
+            glm::vec3 flatDir = glm::normalize(glm::vec3(player->ShootDirection.x, 0.0f, player->ShootDirection.z));
+            glm::vec3 reticlePos = player->Position + (flatDir * player->currentAimDist);
+            myReticle.Draw(cursorShader, reticlePos);
+            enemyManager.RenderUI(cursorShader);
+        }
 
-        // Enemy Health Bars
-        enemyManager.RenderUI(cursorShader);
+        if (showDebugHitboxes) {
+            debugRenderer.DrawOBB(player->Collider, view, projection);
 
-        // B. Screen Space UI (Player Health HUD)
-        // Reset matrices to Identity so we draw in 2D Screen Coordinates (NDC)
+            for (const auto& enemy : enemyManager.GetEnemies()) {
+                debugRenderer.DrawOBB(enemy->Collider, view, projection);
+            }
+
+            for (const Arrow& a : player->arrowManager.arrows) {
+                if (a.active) debugRenderer.DrawOBB(a.hitbox, view, projection);
+            }
+
+            for (const OBB& wall : levelColliders) {
+                debugRenderer.DrawOBB(wall, view, projection);
+            }
+        }
+
+        // Screen UI
+        cursorShader.use();
         cursorShader.setMat4("projection", glm::mat4(1.0f));
         cursorShader.setMat4("view", glm::mat4(1.0f));
 
+        if (gameState == GAME_PLAYING) {
+            playerHUD.Draw(cursorShader, 
+                player->CurrentHealth, player->MaxHealth, 
+                player->power, player->min_power, 
+                player->max_power, 
+                player->currentDashCooldown, DASH_COOLDOWN, 
+                player->currentHealCooldown, HEAL_COOLDOWN);
+            glEnable(GL_DEPTH_TEST);
+            // Optional: Draw Score or other text here
+            // textRenderer.RenderText("Score: 0", 20.0f, SCR_HEIGHT - 40.0f, 0.8f, glm::vec3(1.0f));
+        }
+        else if (gameState == GAME_PAUSED) {
+            pauseScreen.Draw(cursorShader, textRenderer, SCR_WIDTH, SCR_HEIGHT);
+        }
+        else if (gameState == GAME_OVER) {
+            gameOverScreen.Draw(cursorShader, textRenderer, SCR_WIDTH, SCR_HEIGHT);
+        }
         playerHUD.Draw(cursorShader,
             player->CurrentHealth, player->MaxHealth,
             player->power, player->min_power, player->max_power
@@ -246,12 +361,10 @@ int main()
     return 0;
 }
 
-void processInput(GLFWwindow* window, Player* player, Camera* camera, float deltaTime)
-{
-    // --- 1. KEYBOARD MOVEMENT (No Changes) ---
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
 
+void processGameplayInput(GLFWwindow* window, Player* player, Camera* camera, float deltaTime)
+{
+    // Movement
     std::vector<int> direction = { 0,0,0,0 };
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {      
         direction[0] = 1;
@@ -290,52 +403,36 @@ void processInput(GLFWwindow* window, Player* player, Camera* camera, float delt
     
 
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-        player->Jump();
+        player->Dash();
 
-    // --- 2. CONSTANT SENSITIVITY AIMING ---
+    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+        player->Heal();
 
-    // A. Get Mouse Position & Offsets
+    // Mouse Aiming
     double mouseX, mouseY;
     glfwGetCursorPos(window, &mouseX, &mouseY);
+    // ... [Rest of function remains unchanged] ...
 
-    // Calculate how far mouse is from center of screen (in pixels)
     float deltaX = (float)mouseX - (SCR_WIDTH / 2.0f);
     float deltaY = (float)mouseY - (SCR_HEIGHT / 2.0f);
 
-    // B. Get Camera Direction Vectors (Flattened to ignore Y/Height)
-    // This ensures "Up" on mouse pad always equals "Forward" on ground
     glm::vec3 flatFront = glm::normalize(glm::vec3(camera->Front.x, 0.0f, camera->Front.z));
     glm::vec3 flatRight = glm::normalize(glm::vec3(camera->Right.x, 0.0f, camera->Right.z));
 
-    // C. Map Screen Pixels to World Meters
-    // SENSITIVITY: 0.025f means 100 pixels = 2.5 meters. Tweak this number!
-    
-
-    // Combine vectors: 
-    // +DeltaX (Right on screen) moves along Camera Right
-    // +DeltaY (Down on screen) moves BACKWARDS along Camera Front (so we negate it)
     glm::vec3 aimVector = (flatRight * deltaX * sensitivity) - (flatFront * deltaY * sensitivity);
-
-    // D. Extract Data for Player
     float dist = glm::length(aimVector);
 
-    // Handle the case where mouse is exactly at center (dist = 0) to avoid NaN
     if (dist > 0.001f) {
         float angle = atan2(aimVector.x, aimVector.z);
-
-        // Pass the linear distance directly.
-        // The player class clamp (1.0f to 12.0f) will still apply to keep it valid.
         player->SetDirectionByMouse(angle, dist);
     }
 
-    // --- 3. SHOOTING LOGIC (No Changes) ---
+    // Shooting
     static int BowMode = 0;
-
     if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
         player->ProcessMouse(1, deltaTime);
         if (BowMode == 0) BowMode = 1;
     }
-
     if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_RELEASE) {
         if (BowMode == 1) {
             player->ProcessMouse(0, deltaTime);
@@ -343,6 +440,7 @@ void processInput(GLFWwindow* window, Player* player, Camera* camera, float delt
         }
     }
 }
+
 // framebuffer_size_callback (NO CHANGES)
 // ---------------------------------------------------------------------------------------------
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
