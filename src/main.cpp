@@ -153,6 +153,8 @@ int main()
     Model TargetModel(FileSystem::getPath("resources/objects/target/target.obj"));
     Model skeletonModel(FileSystem::getPath("resources/objects/enemy/skelly.dae"));
     Model mobSpawnerModel(FileSystem::getPath("resources/objects/map/mobSpawner.obj"));
+	Model boarderModel(FileSystem::getPath("resources/objects/map/border.obj"));
+	Model boarderHitboxModel(FileSystem::getPath("resources/objects/map/border_hitbox.obj"));
 
     // Create the Player
     glm::vec3 playerStartPos(0.0f, 10.0f, 0.0f);
@@ -174,7 +176,7 @@ int main()
 
     // *** THE MAGIC FUNCTION ***
     // This scans every mesh in your visual model and creates a box for it.
-    levelColliders = GenerateOBBsFromModel(visualModel, levelMatrix);
+    levelColliders = GenerateOBBsFromModels(std::vector<Model>{visualModel, boarderHitboxModel}, levelMatrix);
 
     std::cout << "Generated " << levelColliders.size() << " collision boxes." << std::endl;
     std::cout << "Starting Main Loop..." << std::endl;
@@ -208,7 +210,6 @@ int main()
     enemyManager.Init(&skeletonModel, &player->GroundModel);
     //enemyManager.Spawn(glm::vec3(5.0f, 10.0f, 5.0f), 0.5f, 100.0f); 
     //enemyManager.Spawn(glm::vec3(-10.0f, 10.0f, 10.0f), 0.5f, 100.0f);
-    levelColliders = GenerateOBBsFromModel(visualModel, levelMatrix);
 
     debugRenderer.Init();
 
@@ -363,10 +364,14 @@ int main()
         visualModel.Draw(ourShader);
         GroundModel.Draw(ourShader);
 		DecorModel.Draw(ourShader);
+		boarderModel.Draw(ourShader);
 		//mobSpawnerModel.Draw(ourShader);
-        for (auto& mobSpawner : mobSpawners) {
-            if (&mobSpawner) mobSpawner.Draw(ourShader);
-        }
+        // ourShader.setVec3("lightColor", glm::vec3(20.0f, 5.0f, 20.0f) * 10.0f);
+        // for (auto& mobSpawner : mobSpawners) {
+        //     ourShader.setVec3("lightPos", mobSpawner.Position + glm::vec3(0.0f, 10.5f, 0.0f));
+        //     if (&mobSpawner) mobSpawner.Draw(ourShader);
+        // }
+        for (auto& mobSpawner : mobSpawners) if (&mobSpawner) mobSpawner.Draw(ourShader); //TODO: make crystal grow purple
 
         AnimationShader.use();
         AnimationShader.setMat4("projection", projection);
