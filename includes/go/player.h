@@ -22,7 +22,7 @@
 // Player physics constants
 const float GRAVITY = -9.8f;
 const float JUMP_FORCE = 4.0f;
-const float PLAYER_SPEED = 2.5f;
+const float PLAYER_SPEED = 4.0f;
 
 class Player {
 public:

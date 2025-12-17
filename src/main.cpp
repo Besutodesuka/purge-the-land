@@ -93,56 +93,19 @@ int main()
     // We follow the plan: one visual model, one collision model
     Model playerModel(FileSystem::getPath("resources/objects/player/Erika Archer With Bow Arrow.dae"));
     Model arrowModel(FileSystem::getPath("resources/objects/arrow/arrow.obj"));
-    Model visualModel(FileSystem::getPath("resources/objects/map/map.obj"));
-	Model skyboxModel(FileSystem::getPath("resources/objects/skybox/skybox.obj"));
+    Model visualModel(FileSystem::getPath("resources/objects/map/structure.obj"));
+	//Model skyboxModel(FileSystem::getPath("resources/objects/skybox/skybox.obj"));
     //Model collisionModel(FileSystem::getPath("resources/objects/map/world/hitbox_map.obj")); 
 
     // Create the Player
-    glm::vec3 playerStartPos(10.0f, 70.0f, 10.0f);
+    glm::vec3 playerStartPos(0.0f, 10.0f, 0.0f);
     glm::vec3 playerBoxSize(0.2f, 0.35f, 0.4f); // get collision box from AABB function/static for optimization maybe visualize them to see if it is ok or not
-    float playerModelScale = 0.5f;
+    float playerModelScale = 2.0f;
     player = new Player(&playerModel, playerStartPos, playerBoxSize, playerModelScale);
-	Model GroundModel(FileSystem::getPath("resources/objects/ground/ground.obj"));
+	Model GroundModel(FileSystem::getPath("resources/objects/map/ground.obj"));
 	Model TargetModel(FileSystem::getPath("resources/objects/target/target.obj"));
 	player->SetGroundModel(&GroundModel);
 	player->SetArrowManager(&arrowModel, 0.01f);
-    
-    // // Populate the level colliders vector from the invisible collision model
-    // std::cout << "Building collision geometry..." << std::endl;
-    // for (Mesh& mesh : collisionModel.meshes)
-    // {
-    //     glm::vec3 minAABB = glm::vec3(std::numeric_limits<float>::max());
-    //     glm::vec3 maxAABB = glm::vec3(std::numeric_limits<float>::lowest());
-
-    //     for (Vertex& vertex : mesh.vertices)
-    //     {
-    //         minAABB.x = std::min(minAABB.x, vertex.Position.x);
-    //         minAABB.y = std::min(minAABB.y, vertex.Position.y);
-    //         minAABB.z = std::min(minAABB.z, vertex.Position.z);
-    //         maxAABB.x = std::max(maxAABB.x, vertex.Position.x);
-    //         maxAABB.y = std::max(maxAABB.y, vertex.Position.y);
-    //         maxAABB.z = std::max(maxAABB.z, vertex.Position.z);
-    //     }
-    //     levelColliders.push_back(AABB(minAABB, maxAABB));
-    // }
-    // std::cout << "Finished building collision geometry..." << std::endl;
-    // for (Mesh& mesh : TargetModel.meshes)
-    // {
-    //     glm::vec3 minAABB = glm::vec3(std::numeric_limits<float>::max());
-    //     glm::vec3 maxAABB = glm::vec3(std::numeric_limits<float>::lowest());
-
-    //     for (Vertex& vertex : mesh.vertices)
-    //     {
-    //         minAABB.x = std::min(minAABB.x, vertex.Position.x);
-    //         minAABB.y = std::min(minAABB.y, vertex.Position.y);
-    //         minAABB.z = std::min(minAABB.z, vertex.Position.z);
-    //         maxAABB.x = std::max(maxAABB.x, vertex.Position.x);
-    //         maxAABB.y = std::max(maxAABB.y, vertex.Position.y);
-    //         maxAABB.z = std::max(maxAABB.z, vertex.Position.z);
-    //     }
-    //     monsterColliders.push_back(AABB(minAABB, maxAABB));
-    // }
-    // std::cout << "Finished building collision geometry..." << std::endl;
 
     // ------------------------------------------------------------------
     // Generate Hitboxes (Auto-Generate from Visual Model)
@@ -187,6 +150,7 @@ int main()
     debugRenderer.Init();
     // render loop
     // -----------
+    lastFrame = static_cast<float>(glfwGetTime());
     while (!glfwWindowShouldClose(window))
     {
         // Time logic
@@ -204,7 +168,7 @@ int main()
 
         // Camera Logic
         glm::vec3 cameraTarget = player->GetBoxCenter();
-        camera.SetIsometricView(cameraTarget, 5.0f);
+        if(!FREECAM) camera.SetIsometricView(cameraTarget, 20.0f);
 
         // Render Background
         glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
@@ -219,7 +183,14 @@ int main()
         ourShader.setMat4("view", view);
         ourShader.setMat4("model", glm::mat4(1.0f));
 
-        skyboxModel.Draw(ourShader);
+        //skyboxModel.Draw(ourShader);
+        ourShader.setVec3("camPos", camera.Position);
+
+        // Light Position (e.g., above the player)
+        ourShader.setVec3("lightPos", player->Position + glm::vec3(0.0f, 1.5f, 0.0f));
+
+        // Light Color (High intensity because PBR uses physical falloff)
+        ourShader.setVec3("lightColor", glm::vec3(20.0f, 10.0f, 1.0f) * 10.0f);
         visualModel.Draw(ourShader);
         GroundModel.Draw(ourShader);
 
@@ -258,9 +229,11 @@ int main()
         );
 
         // Debug Drawing (Uncomment to see hitboxes)
-        for (const Arrow& a : player->arrowManager.arrows) { debugRenderer.DrawOBB(a.hitbox, view, projection); }
-        for (const auto& enemy : enemyManager.GetEnemies()) { debugRenderer.DrawOBB(enemy.Collider, view, projection); }
-        debugRenderer.DrawOBB(player->Collider, view, projection);
+        if (HITBOX) {
+            for (const Arrow& a : player->arrowManager.arrows) { debugRenderer.DrawOBB(a.hitbox, view, projection); }
+            for (const auto& enemy : enemyManager.GetEnemies()) { debugRenderer.DrawOBB(enemy.Collider, view, projection); }
+            debugRenderer.DrawOBB(player->Collider, view, projection);
+        }
         
 
         glfwSwapBuffers(window);
@@ -297,6 +270,20 @@ void processInput(GLFWwindow* window, Player* player, Camera* camera, float delt
 
     if (!FREECAM) {
         player->ProcessKeyboard(camera->Front, camera->Right, direction, deltaTime);
+    }
+    else {
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+            camera->ProcessKeyboard(FORWARD, deltaTime);
+        }
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+            camera->ProcessKeyboard(LEFT, deltaTime);
+        }
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+            camera->ProcessKeyboard(BACKWARD, deltaTime);
+        }
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+            camera->ProcessKeyboard(RIGHT, deltaTime);
+        }
     }
     
 
