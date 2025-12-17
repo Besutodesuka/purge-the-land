@@ -18,6 +18,7 @@
 #include <go/debug_renderer.h>
 #include <go/enemy.h>
 
+#include <algorithm>
 #include <iostream>
 #include <vector>
 
@@ -37,6 +38,7 @@ bool HITBOX = true;
 // camera
 // We now initialize our new camera. All logic is inside the class.
 Camera camera(3.0f, glm::vec3(0.0f, 1.0f, 0.0f), -135.0f, 20.0f); // 3.0f is the starting distance
+float camera_distance = 7.5f;
 Player* player = nullptr; // Temporary initialization
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
@@ -168,7 +170,7 @@ int main()
 
         // Camera Logic
         glm::vec3 cameraTarget = player->GetBoxCenter();
-        if(!FREECAM) camera.SetIsometricView(cameraTarget, 20.0f);
+        if(!FREECAM) camera.SetIsometricView(cameraTarget, camera_distance);
 
         // Render Background
         glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
@@ -380,7 +382,12 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
     if (!FREECAM) {
-        return; // Skip if in not freecam mode
+        camera_distance += static_cast<float>(yoffset) * 0.5f;
+
+        // Automatically limits the value between 7.5 and 20.0
+        camera_distance = std::clamp(camera_distance, 7.5f, 20.0f);
+
+        return;
     }
     camera.ProcessMouseScroll(static_cast<float>(yoffset));
 }
