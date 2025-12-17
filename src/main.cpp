@@ -156,7 +156,7 @@ int main()
 
     // Create the Player
     glm::vec3 playerStartPos(0.0f, 10.0f, 0.0f);
-    glm::vec3 playerBoxSize(0.2f, 0.35f, 0.4f); // get collision box from AABB function/static for optimization maybe visualize them to see if it is ok or not
+    glm::vec3 playerBoxSize(0.2f, 1.6f, 0.4f); // get collision box from AABB function/static for optimization maybe visualize them to see if it is ok or not
     float playerModelScale = 1.0f;
     player = new Player(&playerModel, playerStartPos, playerBoxSize, playerModelScale);
     player->SetGroundModel(&GroundModel);
@@ -275,8 +275,9 @@ int main()
                             if (!arrow.active) continue;
                             if (TestOBBOBB(mobSpawner.Collider, arrow.hitbox)) {
                                 arrow.active = false;
-                                mobSpawner.TakeDamage(35.0f); // Damage spawner
-                                std::cout << "Spawner Hit! Health: " << mobSpawner.CurrentHealth << std::endl;
+                                float dmg = player->GetArrowDamage(arrow.velocity);
+                                mobSpawner.TakeDamage(dmg);
+                                std::cout << "Spawner Hit! Damage: " << dmg << " Health: " << mobSpawner.CurrentHealth << std::endl;
                             }
                         }
                     }
@@ -284,6 +285,7 @@ int main()
 
 			}
             enemyManager.Update(deltaTime, player->arrowManager, *player);
+
             glm::vec3 cameraTarget = player->GetBoxCenter();
             cameraTarget.y += 1.0f; // Slightly above the player
             if (!FREECAM) camera.SetIsometricView(cameraTarget, camera_distance);
@@ -330,13 +332,9 @@ int main()
                 }
             }
         }
-
-        player->arrowManager.Render(ourShader);
-
         // Camera Logic
         
-        
-
+  
         // Render Background
         // Render
         glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
@@ -349,6 +347,10 @@ int main()
         ourShader.setMat4("view", view);
         ourShader.setMat4("model", glm::mat4(1.0f));
 
+        player->arrowManager.Render(ourShader);
+
+        ourShader.setMat4("model", glm::mat4(1.0f));
+
         //skyboxModel.Draw(ourShader);
         ourShader.setVec3("camPos", camera.Position);
 
@@ -357,11 +359,14 @@ int main()
 
         // Light Color (High intensity because PBR uses physical falloff)
         ourShader.setVec3("lightColor", glm::vec3(20.0f, 10.0f, 1.0f) * 10.0f);
+       
         visualModel.Draw(ourShader);
         GroundModel.Draw(ourShader);
 		DecorModel.Draw(ourShader);
 		//mobSpawnerModel.Draw(ourShader);
-        for (auto& mobSpawner : mobSpawners) if (&mobSpawner) mobSpawner.Draw(ourShader);
+        for (auto& mobSpawner : mobSpawners) {
+            if (&mobSpawner) mobSpawner.Draw(ourShader);
+        }
 
         AnimationShader.use();
         AnimationShader.setMat4("projection", projection);

@@ -136,8 +136,11 @@ public:
             glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         }
 
+        glm::vec3 barPos = Collider.center;
+        barPos.y += Collider.halfExtents.y - 3.0f;
+        barPos.z += Collider.halfExtents.z + 1.0f;
+
         float healthPct = CurrentHealth / MaxHealth;
-        glm::vec3 barPos = Position + glm::vec3(0.0f, Collider.halfExtents.y * 2.0f + 0.5f, 0.0f);
         
         // Red background
         glm::mat4 model = glm::mat4(1.0f);

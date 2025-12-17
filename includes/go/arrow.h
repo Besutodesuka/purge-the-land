@@ -14,6 +14,7 @@ struct Arrow {
     glm::vec3 position;
     bool active;
     OBB hitbox;
+    float lifeTime;
 
     // Default constructor
     Arrow() : velocity(0.0f), position(0.0f), active(true) {}
@@ -22,6 +23,7 @@ struct Arrow {
         velocity = v;
         position = p;
         active = true;
+        lifeTime = 5.0f;
 
 		// add this if your model is pointing up to sky instead of forward . the obb are based on forward this is need if you need to rotate model
 		// Swap Y and Z for vertical to forward alignment
@@ -130,28 +132,22 @@ public:
     // --- PHYSICS LOOP ---
     // Responsible for Position, Gravity, and OBB Updates
     void Update(float deltaTime, const std::vector<OBB>& levelColliders) {
-        // Use Reference (&) to modify actual arrows
+        // 1. Remove dead arrows (inactive or expired)
+        arrows.erase(std::remove_if(arrows.begin(), arrows.end(),
+            [](const Arrow& a) { return !a.active || a.lifeTime <= 0.0f; }),
+            arrows.end());
+
+        // 2. Update remaining arrows
         for (Arrow& a : arrows) {
-            if (!a.active) continue;
+            a.lifeTime -= deltaTime; // Decrease timer
 
-            // 1. Physics Math
-            a.velocity.y -= 9.8f * deltaTime * 0.5f; // Gravity
-            a.position += a.velocity * deltaTime;    // Move
-
-            // 2. CRITICAL: Update OBB *before* Collision Check
-            // This does the math once per frame
+            a.velocity.y -= 9.8f * deltaTime * 0.5f; 
+            a.position += a.velocity * deltaTime;    
             a.UpdateOBB();
 
-            // 3. Collision Check
             for (const OBB& wall : levelColliders) {
                 if (TestOBBOBB(a.hitbox, wall)) {
-                    std::vector<glm::vec3> corners = a.hitbox.getVertices();
-
-                    // 2. Pass to your debug shader/line renderer
-                    // (Pseudocode depends on your engine)
-                    a.active = false;            // Stop gravity
-					printf("Arrow hit!\n");
-                    a.velocity = glm::vec3(0.0f); // Stop moving
+                    a.active = false; // This will trigger removal next frame
                     break;
                 }
             }
@@ -159,37 +155,25 @@ public:
     }
 
     // --- RENDER LOOP ---
-    // Responsible ONLY for drawing, using data from the OBB
     void Render(Shader shader) {
         if (ArrowModel == nullptr) return;
-
         for (const Arrow& a : arrows) {
+            // 1. Only draw active arrows
+            if (!a.active) continue; 
+
             glm::mat4 model = glm::mat4(1.0f);
-
-            // 1. Move to the Physics World Position (The Tip)
             model = glm::translate(model, a.position);
-
-            // 2. Rotate to face velocity (using your OBB axes)
+            
+            // Rotation logic
             glm::mat4 rotation = glm::mat4(1.0f);
             rotation[0] = glm::vec4(a.hitbox.axes[0], 0.0f);
             rotation[1] = glm::vec4(a.hitbox.axes[1], 0.0f);
             rotation[2] = glm::vec4(a.hitbox.axes[2], 0.0f);
             model = model * rotation;
 
-            // 3. [NEW] Offset the Center of Mass
-            // Since you said the tip is at +Z (0,0,1) in the original model,
-            // and you want the Tip to be at the pivot point (0,0,0),
-            // we shift the mesh BACKWARDS so the tip aligns with the origin.
-            // Adjust '1.0f' to match the actual length of your arrow model from center to tip.
+            // Offsets
             model = glm::rotate(model, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-
-            // be cause we swap y,z axis to make OBB rotate 90 dgree like model, it cause OBB to shift in y axis for z halfextend
             model = glm::translate(model, glm::vec3(0.0f, -a.hitbox.halfExtents.z,  0.0f));
-
-            // 4. Handle your specific Model Adjustments (Scale/Flip)
-            // Note: You had a 180 flip. If the model faces +Z, 
-            // the 180 flip might be pointing it backwards. 
-            // Ensure this flip is actually needed.
             model = glm::rotate(model, glm::radians(180.0f), glm::vec3(0.0f, 1.0f, 0.0f));
             model = glm::scale(model, glm::vec3(arrowScale));
 
@@ -198,5 +182,4 @@ public:
         }
     }
 };
-
 #endif

@@ -25,9 +25,9 @@ const float GRAVITY = -9.8f;
 const float PLAYER_SPEED = 4.0f;
 
 // --- DASH CONSTANTS ---
-const float DASH_SPEED = 10.0f;       
+const float DASH_SPEED = 15.0f;       
 const float DASH_DURATION = 0.25f;    
-const float DASH_COOLDOWN = 2.0f;     
+const float DASH_COOLDOWN = 1.8f;     
 
 // --- HEAL CONSTANTS ---
 const float HEAL_COOLDOWN = 30.0f;
@@ -303,16 +303,46 @@ public:
     }
 
     void FireArrow() {
+        // 1. Get Forward Direction (Flat)
         glm::vec3 flatDir = glm::normalize(glm::vec3(ShootDirection.x, 0.0f, ShootDirection.z));
+        
+        // 2. Calculate Right Direction (Cross Product: Forward x Up)
+        glm::vec3 rightDir = glm::normalize(glm::cross(flatDir, glm::vec3(0.0f, 1.0f, 0.0f)));
+
+        // 3. Define Launch Direction
         glm::vec3 launchDir = flatDir;
-        launchDir.y = 0.268f;
+        launchDir.y = 0.15f; // Slight upward arc
         launchDir = glm::normalize(launchDir);
-        float spawnHeight = Position.y + (AABBSize.y * 0.75f);
+
+        // --- POSITION SETTINGS (TWEAK THESE) ---
+        float heightOffset  = AABBSize.y * 0.80f; // 0.75 = Chest/Shoulder height
+        float forwardOffset = 0.8f;               // How far in front of player
+        float sideOffset    = 0.1f;               // + is Right, - is Left
+
+        // 4. Calculate Final Spawn Position
+        glm::vec3 spawnPos = Position;
+        spawnPos.y += heightOffset;             // Apply Height
+        spawnPos += flatDir * forwardOffset;    // Move Forward
+        spawnPos += rightDir * sideOffset;      // Move Right
 
         arrowManager.Add_Arrow(
             launchDir * (power * 5.0f),
-            glm::vec3(Position.x, spawnHeight, Position.z)
+            spawnPos
         );
+    }
+
+    // Calculate damage based on arrow velocity
+    float GetArrowDamage(const glm::vec3& arrowVelocity) {
+        float speed = glm::length(arrowVelocity);
+        
+        // Reconstruct power from speed (Velocity was calculated as direction * power * 5.0f)
+        float estimatedPower = speed / 5.0f; 
+        
+        // Ensure we stay within bounds
+        estimatedPower = std::clamp(estimatedPower, min_power, max_power);
+
+        // Linear scaling: (Current Power / Max Power) * Max Damage
+        return 50.0f * (estimatedPower / max_power);
     }
 
     void ProcessKeyboard(const glm::vec3& camFront, const glm::vec3& camRight, std::vector<int> direction, float deltaTime) {

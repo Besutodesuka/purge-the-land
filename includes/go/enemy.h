@@ -94,11 +94,11 @@ public:
     Enemy(EnemyResources* res, glm::vec3 pos, float scale, float health)
         : resources(res), Position(pos), Scale(scale), RotationY(0.0f),
         MaxHealth(health), CurrentHealth(health), IsDead(false),
-        Velocity(0.0f), IsGrounded(false), Speed(1.5f),
+        Velocity(0.0f), IsGrounded(false), Speed(3.0f),
         DeathTimer(0.0f), MarkedForDeletion(false), HasHit(false),
         blendAmount(1.0f), blendRate(2.0f), currentAnimPtr(nullptr), nextAnimPtr(nullptr)
     {
-        AttackRange = 1.0f; 
+        AttackRange = 1.2f; 
         DetectionRange = 25.0f;
         AttackDamage = 15.0f;
         AttackCooldown = 1.8f; 
@@ -412,11 +412,11 @@ public:
 
             enemy->Update(deltaTime, player, groundRef);
 
-            // 1. Check if marked for deletion (Death Animation Finished)
+            // 1. Check if marked for deletion
             if (enemy->MarkedForDeletion) {
-                delete enemy;             // Free memory
-                it = enemies.erase(it);   // Remove from vector and update iterator
-                continue;                 // Skip to next iteration
+                delete enemy;             
+                it = enemies.erase(it);   
+                continue;                 
             }
 
             if (!enemy->IsDead) {
@@ -425,8 +425,9 @@ public:
                     if (!arrow.active) continue;
 
                     if (TestOBBOBB(enemy->Collider, arrow.hitbox)) {
-                        arrow.active = false;      
-                        enemy->TakeDamage(35); 
+                        arrow.active = false;
+                        float dmg = player.GetArrowDamage(arrow.velocity);
+                        enemy->TakeDamage(dmg); 
                     }
                 }
             }
