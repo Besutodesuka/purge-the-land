@@ -134,7 +134,7 @@ int main()
     Model arrowModel(FileSystem::getPath("resources/objects/arrow/arrow.obj"));
     Model visualModel(FileSystem::getPath("resources/objects/map/structure.obj"));
 	//Model skyboxModel(FileSystem::getPath("resources/objects/skybox/skybox.obj"));
-    Model GroundModel(FileSystem::getPath("resources/objects/ground/ground.obj"));
+    Model GroundModel(FileSystem::getPath("resources/objects/map/ground.obj"));
     Model TargetModel(FileSystem::getPath("resources/objects/target/target.obj"));
     Model skeletonModel(FileSystem::getPath("resources/objects/enemy/skelly.dae"));
     //Model collisionModel(FileSystem::getPath("resources/objects/map/world/hitbox_map.obj")); 
@@ -142,7 +142,7 @@ int main()
     // Create the Player
     glm::vec3 playerStartPos(0.0f, 10.0f, 0.0f);
     glm::vec3 playerBoxSize(0.2f, 0.35f, 0.4f); // get collision box from AABB function/static for optimization maybe visualize them to see if it is ok or not
-    float playerModelScale = 2.0f;
+    float playerModelScale = 0.5f;
     player = new Player(&playerModel, playerStartPos, playerBoxSize, playerModelScale);
     player->SetGroundModel(&GroundModel);
     player->SetArrowManager(&arrowModel, 0.01f);
@@ -254,6 +254,7 @@ int main()
 
         // Camera Logic
         glm::vec3 cameraTarget = player->GetBoxCenter();
+		cameraTarget.y += 1.0f; // Slightly above the player
         if(!FREECAM) camera.SetIsometricView(cameraTarget, camera_distance);
 
         // Render Background
@@ -340,18 +341,13 @@ int main()
         else if (gameState == GAME_OVER) {
             gameOverScreen.Draw(cursorShader, textRenderer, SCR_WIDTH, SCR_HEIGHT);
         }
-        playerHUD.Draw(cursorShader,
-            player->CurrentHealth, player->MaxHealth,
-            player->power, player->min_power, player->max_power
-        );
 
         // Debug Drawing (Uncomment to see hitboxes)
         if (HITBOX) {
             for (const Arrow& a : player->arrowManager.arrows) { debugRenderer.DrawOBB(a.hitbox, view, projection); }
-            for (const auto& enemy : enemyManager.GetEnemies()) { debugRenderer.DrawOBB(enemy.Collider, view, projection); }
+            for (const auto& enemy : enemyManager.GetEnemies()) { debugRenderer.DrawOBB(enemy->Collider, view, projection); }
             debugRenderer.DrawOBB(player->Collider, view, projection);
         }
-        
 
         glfwSwapBuffers(window);
         glfwPollEvents();
