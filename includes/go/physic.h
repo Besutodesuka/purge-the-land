@@ -464,4 +464,47 @@ std::vector<OBB> GenerateOBBsFromModel(const Model& model, const glm::mat4& pare
     return colliders;
 }
 
+OBB GenerateOBBFromMesh(const Mesh& mesh, const glm::mat4& parentTransform) {
+    OBB box; // Uses default constructor now
+    if (mesh.vertices.empty()) return box;
+
+    glm::vec3 minAABB(std::numeric_limits<float>::infinity());
+    glm::vec3 maxAABB(std::numeric_limits<float>::lowest());
+
+    // Find local bounds
+    for (const auto& vertex : mesh.vertices) {
+        minAABB.x = std::min(minAABB.x, vertex.Position.x);
+        minAABB.y = std::min(minAABB.y, vertex.Position.y);
+        minAABB.z = std::min(minAABB.z, vertex.Position.z);
+
+        maxAABB.x = std::max(maxAABB.x, vertex.Position.x);
+        maxAABB.y = std::max(maxAABB.y, vertex.Position.y);
+        maxAABB.z = std::max(maxAABB.z, vertex.Position.z);
+    }
+
+    glm::vec3 localCenter = (minAABB + maxAABB) * 0.5f;
+    glm::vec3 localExtents = (maxAABB - minAABB) * 0.5f;
+
+    // Apply parent transformation
+    box.center = glm::vec3(parentTransform * glm::vec4(localCenter, 1.0f));
+
+    glm::mat3 rotationScale = glm::mat3(parentTransform);
+    box.axes[0] = glm::normalize(rotationScale[0]);
+    box.axes[1] = glm::normalize(rotationScale[1]);
+    box.axes[2] = glm::normalize(rotationScale[2]);
+
+    // Handle scale
+    glm::vec3 scale;
+    scale.x = glm::length(rotationScale[0]);
+    scale.y = glm::length(rotationScale[1]);
+    scale.z = glm::length(rotationScale[2]);
+
+    box.halfExtents = localExtents * scale;
+
+    // Optional: Set a default debug color per generated box
+    box.setDebugColor(0.0f, 1.0f, 0.0f, 1.0f); // Green
+
+
+    return box;
+}
 #endif

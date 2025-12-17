@@ -41,12 +41,11 @@ GameState gameState = GAME_PLAYING;
 bool escPressedLastFrame = false;
 bool showDebugHitboxes = false;
 bool f3PressedLastFrame = false;
+bool FREECAM = false;
 
 // settings
 const unsigned int SCR_WIDTH = 1980;
 const unsigned int SCR_HEIGHT = 1080;
-bool FREECAM = false;
-bool HITBOX = true;
 
 // camera
 // We now initialize our new camera. All logic is inside the class.
@@ -75,6 +74,7 @@ DebugRenderer debugRenderer;
 std::vector<OBB> levelColliders;
 EnemyManager enemyManager;
 MobSpawner* mobSpawner = nullptr;
+std::vector<MobSpawner> mobSpawners;
 
 // Reset Game Helper
 void ResetGame() {
@@ -146,10 +146,11 @@ int main()
     Model arrowModel(FileSystem::getPath("resources/objects/arrow/arrow.obj"));
     Model visualModel(FileSystem::getPath("resources/objects/map/structure.obj"));
 	//Model skyboxModel(FileSystem::getPath("resources/objects/skybox/skybox.obj"));
+	Model DecorModel(FileSystem::getPath("resources/objects/map/decorations.obj"));
     Model GroundModel(FileSystem::getPath("resources/objects/map/ground.obj"));
     Model TargetModel(FileSystem::getPath("resources/objects/target/target.obj"));
     Model skeletonModel(FileSystem::getPath("resources/objects/enemy/skelly.dae"));
-    Model mobSpawnerModel(FileSystem::getPath("resources/objects/spawner/mobSpawner.obj"));
+    Model mobSpawnerModel(FileSystem::getPath("resources/objects/map/mobSpawner.obj"));
 
     // Create the Player
     glm::vec3 playerStartPos(0.0f, 10.0f, 0.0f);
@@ -187,8 +188,19 @@ int main()
 
     // Initialize Spawner
     // Positioned at (0, 0, 0) or wherever you want it on the map
-    mobSpawner = new MobSpawner(&mobSpawnerModel, glm::vec3(1.0f, 0.5f, 1.0f), 100.0f);
-    mobSpawner->InitialSpawn(enemyManager); // Spawn initial 3
+	int counter = 0;
+    for (int counter = 0; counter < mobSpawnerModel.meshes.size(); counter++)
+    {
+        MobSpawner* mobSpawner = new MobSpawner(
+            &mobSpawnerModel,
+            mobSpawnerModel.meshes[counter].vertices[0].Position + glm::vec3(0.0f, -4.0f, 0.0f),
+            1.0f,
+            counter
+        );
+		
+        mobSpawner->InitialSpawn(enemyManager);
+        mobSpawners.push_back(*mobSpawner);
+    }
 
     enemyManager.Init(&skeletonModel, &player->GroundModel);
     //enemyManager.Spawn(glm::vec3(5.0f, 10.0f, 5.0f), 0.5f, 100.0f); 
@@ -236,25 +248,29 @@ int main()
             player->Update(deltaTime, &levelColliders);
 
             // Update Spawner Logic
-            if (mobSpawner) {
-                // Remove deleted enemies from spawner tracking before Manager deletes them
-                mobSpawner->Update(deltaTime, enemyManager);
+            for (auto& mobSpawner : mobSpawners) {
+                if (&mobSpawner) {
+                    // Remove deleted enemies from spawner tracking before Manager deletes them
+                    mobSpawner.Update(deltaTime, enemyManager);
 
-                // Collision: Arrows vs Spawner
-                if (!mobSpawner->IsDestroyed) {
-                    for (Arrow& arrow : player->arrowManager.arrows) {
-                        if (!arrow.active) continue;
-                        if (TestOBBOBB(mobSpawner->Collider, arrow.hitbox)) {
-                            arrow.active = false;
-                            mobSpawner->TakeDamage(35.0f); // Damage spawner
-                            std::cout << "Spawner Hit! Health: " << mobSpawner->CurrentHealth << std::endl;
+                    // Collision: Arrows vs Spawner
+                    if (!mobSpawner.IsDestroyed) {
+                        for (Arrow& arrow : player->arrowManager.arrows) {
+                            if (!arrow.active) continue;
+                            if (TestOBBOBB(mobSpawner.Collider, arrow.hitbox)) {
+                                arrow.active = false;
+                                mobSpawner.TakeDamage(35.0f); // Damage spawner
+                                std::cout << "Spawner Hit! Health: " << mobSpawner.CurrentHealth << std::endl;
+                            }
                         }
                     }
-                }
             }
 
+			}
             enemyManager.Update(deltaTime, player->arrowManager, *player);
-            camera.SetIsometricView(player->GetBoxCenter(), 5.0f);
+            glm::vec3 cameraTarget = player->GetBoxCenter();
+            cameraTarget.y += 1.0f; // Slightly above the player
+            if (!FREECAM) camera.SetIsometricView(cameraTarget, camera_distance);
         }
         else if (gameState == GAME_PAUSED) {
             if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
@@ -288,9 +304,8 @@ int main()
         player->arrowManager.Render(ourShader);
 
         // Camera Logic
-        glm::vec3 cameraTarget = player->GetBoxCenter();
-		cameraTarget.y += 1.0f; // Slightly above the player
-        if(!FREECAM) camera.SetIsometricView(cameraTarget, camera_distance);
+        
+        
 
         // Render Background
         // Render
@@ -314,7 +329,9 @@ int main()
         ourShader.setVec3("lightColor", glm::vec3(20.0f, 10.0f, 1.0f) * 10.0f);
         visualModel.Draw(ourShader);
         GroundModel.Draw(ourShader);
-        if (mobSpawner) mobSpawner->Draw(ourShader);
+		DecorModel.Draw(ourShader);
+		//mobSpawnerModel.Draw(ourShader);
+        for (auto& mobSpawner : mobSpawners) if (&mobSpawner) mobSpawner.Draw(ourShader);
 
         AnimationShader.use();
         AnimationShader.setMat4("projection", projection);
@@ -337,7 +354,7 @@ int main()
             glm::vec3 reticlePos = player->Position + (flatDir * player->currentAimDist);
             myReticle.Draw(cursorShader, reticlePos);
             enemyManager.RenderUI(cursorShader);
-            if (mobSpawner) mobSpawner->DrawHealthBar(cursorShader);
+            for (auto& mobSpawner : mobSpawners) if (&mobSpawner) mobSpawner.DrawHealthBar(cursorShader);
         }
 
         if (showDebugHitboxes) {
@@ -347,8 +364,10 @@ int main()
                 debugRenderer.DrawOBB(enemy->Collider, view, projection);
             }
 
-            if (mobSpawner && !mobSpawner->IsDestroyed) {
-                debugRenderer.DrawOBB(mobSpawner->Collider, view, projection);
+            for (auto& mobSpawner : mobSpawners) {
+                if (&mobSpawner && !mobSpawner.IsDestroyed) {
+                    debugRenderer.DrawOBB(mobSpawner.Collider, view, projection);
+                }
             }
 
             for (const Arrow& a : player->arrowManager.arrows) {
@@ -390,7 +409,7 @@ int main()
             player->currentHealCooldown, 30.0f); // Heal: current, max
 
         // Debug Drawing (Uncomment to see hitboxes)
-        if (HITBOX) {
+        if (showDebugHitboxes) {
             for (const Arrow& a : player->arrowManager.arrows) { debugRenderer.DrawOBB(a.hitbox, view, projection); }
             for (Enemy* enemy : enemyManager.GetEnemies()) {
                 debugRenderer.DrawOBB(enemy->Collider, view, projection);
@@ -431,16 +450,17 @@ void processGameplayInput(GLFWwindow* window, Player* player, Camera* camera, fl
         player->ProcessKeyboard(camera->Front, camera->Right, direction, deltaTime);
     }
     else {
+		float speedMultiplier = 3.0f;
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-            camera->ProcessKeyboard(FORWARD, deltaTime);
+            camera->ProcessKeyboard(FORWARD, deltaTime* speedMultiplier);
         }
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS * speedMultiplier) {
             camera->ProcessKeyboard(LEFT, deltaTime);
         }
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS * speedMultiplier) {
             camera->ProcessKeyboard(BACKWARD, deltaTime);
         }
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS * speedMultiplier) {
             camera->ProcessKeyboard(RIGHT, deltaTime);
         }
     }

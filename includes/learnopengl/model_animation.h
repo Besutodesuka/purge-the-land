@@ -42,10 +42,15 @@ public:
     }
 
     // draws the model, and thus all its meshes
-    void Draw(Shader &shader)
+	void Draw(Shader& shader, int visible = -1)
     {
-        for(unsigned int i = 0; i < meshes.size(); i++)
-            meshes[i].Draw(shader);
+		if (visible == -1) {
+			for(unsigned int i = 0; i < meshes.size(); i++)
+				meshes[i].Draw(shader);
+		}
+		else {
+			meshes[visible].Draw(shader);
+		}
     }
     
 	auto& GetBoneInfoMap() { return m_BoneInfoMap; }

@@ -7,6 +7,7 @@
 #include <go/enemy.h>
 #include <go/arrow.h>
 #include <learnopengl/model_animation.h>
+#include <go/physic.h>
 
 class MobSpawner {
 public:
@@ -22,13 +23,15 @@ public:
     bool WaveInProgress;
     int NextSpawnCount;
 
+    int Location;
+
     // Components
     Model* spawnerModel;
     OBB Collider;
     std::vector<Enemy*> myEnemies; // Track enemies spawned by this object
 
-    MobSpawner(Model* model, glm::vec3 pos, float scale) 
-        : spawnerModel(model), Position(pos), Scale(scale),
+    MobSpawner(Model* model, glm::vec3 pos, float scale, int location) 
+        : spawnerModel(model), Position(pos), Scale(scale), Location(location),
           MaxHealth(300.0f), CurrentHealth(300.0f), IsDestroyed(false),
           RespawnTimer(0.0f), TimeBetweenWaves(10.0f), 
           WaveInProgress(true), NextSpawnCount(4)
@@ -94,23 +97,24 @@ public:
     }
 
     void UpdateOBB() {
+		Collider = GenerateOBBFromMesh(spawnerModel->meshes[Location], glm::mat4(1.0f));
         // Approximate a box for the spawner
-        Collider.center = Position + glm::vec3(0.0f, 1.5f * Scale, 0.0f);
-        Collider.halfExtents = glm::vec3(1.0f, 1.5f, 1.0f) * Scale; 
-        
-        Collider.axes[0] = glm::vec3(1.0f, 0.0f, 0.0f);
-        Collider.axes[1] = glm::vec3(0.0f, 1.0f, 0.0f);
-        Collider.axes[2] = glm::vec3(0.0f, 0.0f, 1.0f);
+        //Collider.center = Position + glm::vec3(0.0f, 1.5f * Scale, 0.0f);
+        //Collider.halfExtents = glm::vec3(1.0f, 1.5f, 1.0f) * Scale; 
+        //
+        //Collider.axes[0] = glm::vec3(1.0f, 0.0f, 0.0f);
+        //Collider.axes[1] = glm::vec3(0.0f, 1.0f, 0.0f);
+        //Collider.axes[2] = glm::vec3(0.0f, 0.0f, 1.0f);
     }
 
     void Draw(Shader& shader) {
         if (IsDestroyed || !spawnerModel) return;
 
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, Position);
+        //model = glm::translate(model, Position);
         model = glm::scale(model, glm::vec3(Scale));
         shader.setMat4("model", model);
-        spawnerModel->Draw(shader);
+        spawnerModel->Draw(shader, Location);
     }
 
     // Draw a simple static health bar (Red/Green)
