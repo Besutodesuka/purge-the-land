@@ -82,7 +82,7 @@ private:
 };
 
 // ==========================================
-// PLAYER HUD (Health Bar + Charge Bar)
+// PLAYER HUD (Health Bar + Charge Bar + Skills)
 // ==========================================
 class PlayerHUD {
 public:
@@ -101,7 +101,10 @@ public:
 
     // Call this after drawing the 3D world.
     // Shader must have Projection/View set to Identity.
-    void Draw(Shader& shader, float currentHealth, float maxHealth, float currentPower, float minPower, float maxPower) {
+    // Updated to include Skill Cooldowns
+    void Draw(Shader& shader, float currentHealth, float maxHealth, float currentPower, float minPower, float maxPower, 
+              float dashCooldown, float maxDashCooldown, float healCooldown, float maxHealCooldown) 
+    {
         if (!initialized) SetupMesh();
 
         glEnable(GL_BLEND);
@@ -142,7 +145,6 @@ public:
         if (powerPct < 0.0f) powerPct = 0.0f;
         if (powerPct > 1.0f) powerPct = 1.0f;
 
-        // Position: Slightly above health bar (Y = -0.80), Thinner (Height = 0.015)
         float powerY = -0.79f;
         float powerHeight = 0.015f;
 
@@ -160,9 +162,106 @@ public:
             model = glm::translate(model, glm::vec3(0.0f, powerY, 0.0f)); 
             model = glm::scale(model, glm::vec3(0.5f * powerPct, powerHeight, 1.0f)); 
             shader.setMat4("model", model);
-            // Gold Color
             shader.setVec4("color", glm::vec4(1.0f, 0.8f, 0.0f, 0.9f)); 
             glDrawArrays(GL_TRIANGLES, 0, 6);
+        }
+
+        // --- SKILL CONSTANTS ---
+        // HP Bar is width 0.5 centered at 0. Right edge is at x=0.25.
+        // We place icons starting from 0.26.
+        float startX = 0.26f; 
+        float iconSize = 0.05f; // Height and Width
+        float gap = 0.01f;
+        float baseY = -0.85f; // Center Y aligned with HP bar
+
+        // --- 3. DASH SKILL (Cyan) ---
+        // Box 1 position: X = 0.26 + half_width.
+        float dashX = startX + (iconSize / 2.0f);
+        
+        // Calculate Dash Fill Pct (Inverse of cooldown)
+        float dashPct = 1.0f;
+        if (maxDashCooldown > 0.0f) dashPct = 1.0f - (dashCooldown / maxDashCooldown);
+        if (dashPct < 0.0f) dashPct = 0.0f;
+
+        // Dash Background (Dark)
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(dashX, baseY, 0.0f));
+        model = glm::scale(model, glm::vec3(iconSize, iconSize, 1.0f));
+        shader.setMat4("model", model);
+        shader.setVec4("color", glm::vec4(0.1f, 0.1f, 0.1f, 0.8f));
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        // Dash Foreground (Cyan) - Fills from bottom
+        if (dashPct > 0.0f) {
+            float bottomY = baseY - (iconSize / 2.0f);
+            float filledHeight = iconSize * dashPct;
+            float newCenterY = bottomY + (filledHeight / 2.0f);
+
+            model = glm::mat4(1.0f);
+            model = glm::translate(model, glm::vec3(dashX, newCenterY, 0.0f));
+            model = glm::scale(model, glm::vec3(iconSize, filledHeight, 1.0f));
+            shader.setMat4("model", model);
+            // Cyan Color
+            shader.setVec4("color", glm::vec4(0.0f, 1.0f, 1.0f, 0.9f)); 
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+        }
+
+        // --- 4. HEAL SKILL (Green/Light) ---
+        // Box 2 position
+        float healX = dashX + iconSize + gap;
+
+        // Calculate Heal Fill Pct
+        float healPct = 1.0f;
+        if (maxHealCooldown > 0.0f) healPct = 1.0f - (healCooldown / maxHealCooldown);
+        if (healPct < 0.0f) healPct = 0.0f;
+
+        // Heal Background (Dark Cross)
+        float thickness = iconSize / 3.0f;
+        shader.setVec4("color", glm::vec4(0.1f, 0.1f, 0.1f, 0.8f));
+
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(healX, baseY, 0.0f));
+        model = glm::scale(model, glm::vec3(thickness, iconSize, 1.0f));
+        shader.setMat4("model", model);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(healX, baseY, 0.0f));
+        model = glm::scale(model, glm::vec3(iconSize, thickness, 1.0f));
+        shader.setMat4("model", model);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        // Heal Foreground (Red Cross) - Fills from bottom
+        if (healPct > 0.0f) {
+            float bottomY = baseY - (iconSize / 2.0f);
+            float currentTopY = bottomY + (iconSize * healPct);
+            float thickness = iconSize / 3.0f; // Thickness of the cross bars
+
+            shader.setVec4("color", glm::vec4(1.0f, 0.0f, 0.0f, 0.9f)); // Red Color
+
+            // 1. Vertical Bar (Fills up with the cooldown)
+            float vHeight = iconSize * healPct;
+            model = glm::mat4(1.0f);
+            model = glm::translate(model, glm::vec3(healX, bottomY + (vHeight / 2.0f), 0.0f));
+            model = glm::scale(model, glm::vec3(thickness, vHeight, 1.0f));
+            shader.setMat4("model", model);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+
+            // 2. Horizontal Bar (Fills only when the level reaches the middle)
+            float hBarBottom = bottomY + (iconSize - thickness) / 2.0f;
+            float hBarTop = hBarBottom + thickness;
+            
+            if (currentTopY > hBarBottom) {
+                float hFillStart = hBarBottom;
+                float hFillEnd = (currentTopY < hBarTop) ? currentTopY : hBarTop; // min(currentTopY, hBarTop)
+                float hFillHeight = hFillEnd - hFillStart;
+                
+                model = glm::mat4(1.0f);
+                model = glm::translate(model, glm::vec3(healX, hFillStart + (hFillHeight / 2.0f), 0.0f));
+                model = glm::scale(model, glm::vec3(iconSize, hFillHeight, 1.0f));
+                shader.setMat4("model", model);
+                glDrawArrays(GL_TRIANGLES, 0, 6);
+            }
         }
 
         // Restore State

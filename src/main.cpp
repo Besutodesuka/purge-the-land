@@ -172,10 +172,10 @@ int main()
     }
 
     enemyManager.Init(&skeletonModel, &player->GroundModel);
-    /*enemyManager.Spawn(glm::vec3(5.0f, 10.0f, 5.0f), 0.5f, 100.0f); 
+    //enemyManager.Spawn(glm::vec3(5.0f, 10.0f, 5.0f), 0.5f, 100.0f); 
     enemyManager.Spawn(glm::vec3(-10.0f, 10.0f, 10.0f), 0.5f, 100.0f);
-    enemyManager.Spawn(glm::vec3(-15.0f, 10.0f, 10.0f), 0.5f, 100.0f);*/
-    enemyManager.Spawn(glm::vec3(-10.0f, 10.0f, 5.0f), 0.5f, 100.0f);
+    enemyManager.Spawn(glm::vec3(-15.0f, 10.0f, 10.0f), 0.5f, 100.0f);
+    //enemyManager.Spawn(glm::vec3(-10.0f, 10.0f, 5.0f), 0.5f, 100.0f);
     levelColliders = GenerateOBBsFromModel(visualModel, levelMatrix);
 
     debugRenderer.Init();
@@ -309,7 +309,12 @@ int main()
         cursorShader.setMat4("view", glm::mat4(1.0f));
 
         if (gameState == GAME_PLAYING) {
-            playerHUD.Draw(cursorShader, player->CurrentHealth, player->MaxHealth, player->power, player->min_power, player->max_power);
+            playerHUD.Draw(cursorShader, 
+                player->CurrentHealth, player->MaxHealth, 
+                player->power, player->min_power, 
+                player->max_power, 
+                player->currentDashCooldown, DASH_COOLDOWN, 
+                player->currentHealCooldown, HEAL_COOLDOWN);
             glEnable(GL_DEPTH_TEST);
             // Optional: Draw Score or other text here
             // textRenderer.RenderText("Score: 0", 20.0f, SCR_HEIGHT - 40.0f, 0.8f, glm::vec3(1.0f));
@@ -332,8 +337,6 @@ int main()
 
 void processGameplayInput(GLFWwindow* window, Player* player, Camera* camera, float deltaTime)
 {
-    // Note: ESC handling moved to main loop for state toggling
-
     // Movement
     std::vector<int> direction = { 0,0,0,0 };
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) direction[0] = 1;
@@ -343,11 +346,15 @@ void processGameplayInput(GLFWwindow* window, Player* player, Camera* camera, fl
     player->ProcessKeyboard(camera->Front, camera->Right, direction, deltaTime);
 
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-        player->Jump();
+        player->Dash();
+
+    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+        player->Heal();
 
     // Mouse Aiming
     double mouseX, mouseY;
     glfwGetCursorPos(window, &mouseX, &mouseY);
+    // ... [Rest of function remains unchanged] ...
 
     float deltaX = (float)mouseX - (SCR_WIDTH / 2.0f);
     float deltaY = (float)mouseY - (SCR_HEIGHT / 2.0f);
