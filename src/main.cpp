@@ -19,6 +19,7 @@
 #include <go/enemy.h>
 #include <go/menu.h>
 #include <go/text_renderer.h>
+#include <go/spawner.h>
 
 #include <algorithm>
 #include <iostream>
@@ -73,15 +74,26 @@ float lastFrame = 0.0f;
 DebugRenderer debugRenderer;
 std::vector<OBB> levelColliders;
 EnemyManager enemyManager;
+MobSpawner* mobSpawner = nullptr;
 
 // Reset Game Helper
 void ResetGame() {
     if (player) player->Reset();
     if (player) player->arrowManager.arrows.clear();
     enemyManager.Reset();
-    enemyManager.Spawn(glm::vec3(5.0f, 0.5f, 5.0f), 0.5f, 100.0f);
-    enemyManager.Spawn(glm::vec3(-5.0f, 0.5f, 5.0f), 0.5f, 100.0f);
-    enemyManager.Spawn(glm::vec3(0.0f, 0.5f, -8.0f), 0.5f, 150.0f);
+
+    // Reset Spawner if it exists
+    if (mobSpawner) {
+        mobSpawner->CurrentHealth = mobSpawner->MaxHealth;
+        mobSpawner->IsDestroyed = false;
+        mobSpawner->myEnemies.clear();
+        mobSpawner->InitialSpawn(enemyManager); // Spawns the initial 3
+    }
+
+    // You can remove these hardcoded spawns if you want the spawner to be the only source
+    // enemyManager.Spawn(glm::vec3(5.0f, 0.5f, 5.0f), 0.5f, 100.0f);
+    // ...
+
     gameState = GAME_PLAYING;
 }
 
@@ -137,7 +149,7 @@ int main()
     Model GroundModel(FileSystem::getPath("resources/objects/map/ground.obj"));
     Model TargetModel(FileSystem::getPath("resources/objects/target/target.obj"));
     Model skeletonModel(FileSystem::getPath("resources/objects/enemy/skelly.dae"));
-    //Model collisionModel(FileSystem::getPath("resources/objects/map/world/hitbox_map.obj")); 
+    Model mobSpawnerModel(FileSystem::getPath("resources/objects/spawner/mobSpawner.obj"));
 
     // Create the Player
     glm::vec3 playerStartPos(0.0f, 10.0f, 0.0f);
@@ -173,14 +185,18 @@ int main()
         std::cout << "       Solution: Export your OBJ with 'Split by Objects' or 'Keep Vertex Order'." << std::endl;
     }
 
+    // Initialize Spawner
+    // Positioned at (0, 0, 0) or wherever you want it on the map
+    mobSpawner = new MobSpawner(&mobSpawnerModel, glm::vec3(1.0f, 0.5f, 1.0f), 100.0f);
+    mobSpawner->InitialSpawn(enemyManager); // Spawn initial 3
+
     enemyManager.Init(&skeletonModel, &player->GroundModel);
     //enemyManager.Spawn(glm::vec3(5.0f, 10.0f, 5.0f), 0.5f, 100.0f); 
-    enemyManager.Spawn(glm::vec3(-10.0f, 10.0f, 10.0f), 0.5f, 100.0f);
-    enemyManager.Spawn(glm::vec3(-15.0f, 10.0f, 10.0f), 0.5f, 100.0f);
-    //enemyManager.Spawn(glm::vec3(-10.0f, 10.0f, 5.0f), 0.5f, 100.0f);
+    //enemyManager.Spawn(glm::vec3(-10.0f, 10.0f, 10.0f), 0.5f, 100.0f);
     levelColliders = GenerateOBBsFromModel(visualModel, levelMatrix);
 
     debugRenderer.Init();
+
     // render loop
     // -----------
     lastFrame = static_cast<float>(glfwGetTime());
@@ -218,6 +234,25 @@ int main()
             }
             processGameplayInput(window, player, &camera, deltaTime);
             player->Update(deltaTime, &levelColliders);
+
+            // Update Spawner Logic
+            if (mobSpawner) {
+                // Remove deleted enemies from spawner tracking before Manager deletes them
+                mobSpawner->Update(deltaTime, enemyManager);
+
+                // Collision: Arrows vs Spawner
+                if (!mobSpawner->IsDestroyed) {
+                    for (Arrow& arrow : player->arrowManager.arrows) {
+                        if (!arrow.active) continue;
+                        if (TestOBBOBB(mobSpawner->Collider, arrow.hitbox)) {
+                            arrow.active = false;
+                            mobSpawner->TakeDamage(35.0f); // Damage spawner
+                            std::cout << "Spawner Hit! Health: " << mobSpawner->CurrentHealth << std::endl;
+                        }
+                    }
+                }
+            }
+
             enemyManager.Update(deltaTime, player->arrowManager, *player);
             camera.SetIsometricView(player->GetBoxCenter(), 5.0f);
         }
@@ -279,6 +314,7 @@ int main()
         ourShader.setVec3("lightColor", glm::vec3(20.0f, 10.0f, 1.0f) * 10.0f);
         visualModel.Draw(ourShader);
         GroundModel.Draw(ourShader);
+        if (mobSpawner) mobSpawner->Draw(ourShader);
 
         AnimationShader.use();
         AnimationShader.setMat4("projection", projection);
@@ -301,6 +337,7 @@ int main()
             glm::vec3 reticlePos = player->Position + (flatDir * player->currentAimDist);
             myReticle.Draw(cursorShader, reticlePos);
             enemyManager.RenderUI(cursorShader);
+            if (mobSpawner) mobSpawner->DrawHealthBar(cursorShader);
         }
 
         if (showDebugHitboxes) {
@@ -308,6 +345,10 @@ int main()
 
             for (const auto& enemy : enemyManager.GetEnemies()) {
                 debugRenderer.DrawOBB(enemy->Collider, view, projection);
+            }
+
+            if (mobSpawner && !mobSpawner->IsDestroyed) {
+                debugRenderer.DrawOBB(mobSpawner->Collider, view, projection);
             }
 
             for (const Arrow& a : player->arrowManager.arrows) {
@@ -341,14 +382,21 @@ int main()
         else if (gameState == GAME_OVER) {
             gameOverScreen.Draw(cursorShader, textRenderer, SCR_WIDTH, SCR_HEIGHT);
         }
+        playerHUD.Draw(cursorShader,
+            player->CurrentHealth, player->MaxHealth,
+            player->power, player->min_power,
+            player->max_power,
+            player->currentDashCooldown, 2.0f,   // Dash: current, max
+            player->currentHealCooldown, 30.0f); // Heal: current, max
 
         // Debug Drawing (Uncomment to see hitboxes)
         if (HITBOX) {
             for (const Arrow& a : player->arrowManager.arrows) { debugRenderer.DrawOBB(a.hitbox, view, projection); }
-            for (const auto& enemy : enemyManager.GetEnemies()) { debugRenderer.DrawOBB(enemy->Collider, view, projection); }
-            debugRenderer.DrawOBB(player->Collider, view, projection);
+            for (Enemy* enemy : enemyManager.GetEnemies()) {
+                debugRenderer.DrawOBB(enemy->Collider, view, projection);
+            }
         }
-
+        
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
