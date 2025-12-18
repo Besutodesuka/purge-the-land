@@ -175,7 +175,8 @@ file(GLOB SHADERS_MAIN
 	file(GLOB DLLS "dlls/*.dll")
     foreach(SHADER ${SHADERS_MAIN})
         if(WIN32)
-            add_custom_command(TARGET PurgeTheLand PRE_BUILD COMMAND ${CMAKE_COMMAND} -E copy ${SHADER} $<TARGET_FILE_DIR:PurgeTheLand>)
+            add_custom_command(TARGET PurgeTheLand PRE_BUILD 
+COMMAND ${CMAKE_COMMAND} -E copy ${SHADER} $<TARGET_FILE_DIR:PurgeTheLand>)
 			add_custom_command(TARGET PurgeTheLand PRE_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different ${DLLS} $<TARGET_FILE_DIR:PurgeTheLand>)
         elseif(UNIX AND NOT APPLE)
             file(COPY ${SHADER} DESTINATION ${CMAKE_SOURCE_DIR}/bin/)
@@ -184,5 +185,17 @@ file(GLOB SHADERS_MAIN
             makeLink(${SHADER} ${CMAKE_SOURCE_DIR}/bin/${SHADERNAME} PurgeTheLand)
         endif(WIN32)
     endforeach(SHADER)
+
+# --- SOLUTION ADDED BELOW ---
+# This copies the entire 'resources' folder to the output directory (Debug/Release)
+if(WIN32)
+    add_custom_command(TARGET PurgeTheLand POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/resources"
+        "$<TARGET_FILE_DIR:PurgeTheLand>/resources"
+        COMMENT "Copying Resources folder to output directory..."
+    )
+endif(WIN32)
+# ----------------------------
 
 include_directories(${CMAKE_SOURCE_DIR}/includes)

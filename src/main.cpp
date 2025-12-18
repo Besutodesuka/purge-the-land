@@ -142,21 +142,20 @@ int main()
         SCR_HEIGHT,
         "text.vs",
         "text.fs",
-        FileSystem::getPath("resources/fonts/Antonio-Bold.ttf").c_str()
+        "resources/fonts/Antonio-Bold.ttf"
     );
 
     // Load models
-    Model playerModel(FileSystem::getPath("resources/objects/player/Erika Archer With Bow Arrow.dae"));
-    Model arrowModel(FileSystem::getPath("resources/objects/arrow/arrow.obj"));
-    Model visualModel(FileSystem::getPath("resources/objects/map/structure.obj"));
-	//Model skyboxModel(FileSystem::getPath("resources/objects/skybox/skybox.obj"));
-	Model DecorModel(FileSystem::getPath("resources/objects/map/decorations.obj"));
-    Model GroundModel(FileSystem::getPath("resources/objects/map/ground.obj"));
-    Model TargetModel(FileSystem::getPath("resources/objects/target/target.obj"));
-    Model skeletonModel(FileSystem::getPath("resources/objects/enemy/skelly.dae"));
-    Model mobSpawnerModel(FileSystem::getPath("resources/objects/map/mobSpawner.obj"));
-	Model boarderModel(FileSystem::getPath("resources/objects/map/border.obj"));
-	Model boarderHitboxModel(FileSystem::getPath("resources/objects/map/border_hitbox.obj"));
+    Model playerModel("resources/objects/player/Erika Archer With Bow Arrow.dae");
+    Model arrowModel("resources/objects/arrow/arrow.obj");
+    Model visualModel("resources/objects/map/structure.obj");
+	//Model skyboxModel("resources/objects/skybox/skybox.obj"));
+	Model DecorModel("resources/objects/map/decorations.obj");
+    Model GroundModel("resources/objects/map/ground.obj");
+    Model skeletonModel("resources/objects/enemy/skelly.dae");
+    Model mobSpawnerModel("resources/objects/map/mobSpawner.obj");
+	Model boarderModel("resources/objects/map/border.obj");
+	Model boarderHitboxModel("resources/objects/map/border_hitbox.obj");
 
     // Create the Player
     glm::vec3 playerStartPos(0.0f, 10.0f, 0.0f);
