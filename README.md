@@ -95,13 +95,5 @@ Standard *LearnOpenGL* stack:
 - **Outcome:** The upgrade caused significant conflicts and bugs with existing legacy libraries in the project. We were forced to cancel the upgrade and revert to the previous version, continuing with standard texture mapping methods.
 
 ---
-
-# Installation & Build
-
-1. Clone the repository:
-```bash
-   git clone [https://github.com/Besutodesuka/purge-the-land.git](https://github.com/Besutodesuka/purge-the-land.git)
-```
-
-## DEMO
+# DEMO
 [https://github.com/user-attachments/assets/e0b6b6db-e410-4548-a04f-9753b55e5d76](https://github.com/user-attachments/assets/b9efe0f6-42b8-4e61-9591-88623ad74ae1)
