@@ -85,11 +85,13 @@ void ResetGame() {
     enemyManager.Reset();
 
     // Reset Spawner if it exists
-    if (mobSpawner) {
-        mobSpawner->CurrentHealth = mobSpawner->MaxHealth;
-        mobSpawner->IsDestroyed = false;
-        mobSpawner->myEnemies.clear();
-        mobSpawner->InitialSpawn(enemyManager); // Spawns the initial 3
+	for (auto& mobSpawner : mobSpawners){
+        if (&mobSpawner) {
+            mobSpawner.CurrentHealth = mobSpawner.MaxHealth;
+            mobSpawner.IsDestroyed = false;
+            mobSpawner.myEnemies.clear();
+            mobSpawner.InitialSpawn(enemyManager); // Spawns the initial 3
+        }
     }
 
     // You can remove these hardcoded spawns if you want the spawner to be the only source
