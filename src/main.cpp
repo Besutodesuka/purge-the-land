@@ -356,22 +356,32 @@ int main()
         ourShader.setVec3("camPos", camera.Position);
 
         // Light Position (e.g., above the player)
-        ourShader.setVec3("lightPos", player->Position + glm::vec3(0.0f, 1.5f, 0.0f));
+        int lightCount = 0;
+        std::string posName, colorName;
 
+        // 1. Player Light (Warm/Orange)
+        posName = "lightPositions[" + std::to_string(lightCount) + "]";
+        colorName = "lightColors[" + std::to_string(lightCount) + "]";
+        ourShader.setVec3(posName, player->Position + glm::vec3(0.0f, 1.5f, 0.0f));
+        lightCount++;
         // Light Color (High intensity because PBR uses physical falloff)
-        ourShader.setVec3("lightColor", glm::vec3(20.0f, 10.0f, 1.0f) * 10.0f);
+        ourShader.setVec3(colorName, glm::vec3(20.0f, 10.0f, 1.0f) * 10.0f);
        
         visualModel.Draw(ourShader);
         GroundModel.Draw(ourShader);
 		DecorModel.Draw(ourShader);
 		boarderModel.Draw(ourShader);
-		//mobSpawnerModel.Draw(ourShader);
-        // ourShader.setVec3("lightColor", glm::vec3(20.0f, 5.0f, 20.0f) * 10.0f);
-        // for (auto& mobSpawner : mobSpawners) {
-        //     ourShader.setVec3("lightPos", mobSpawner.Position + glm::vec3(0.0f, 10.5f, 0.0f));
-        //     if (&mobSpawner) mobSpawner.Draw(ourShader);
-        // }
-        for (auto& mobSpawner : mobSpawners) if (&mobSpawner) mobSpawner.Draw(ourShader); //TODO: make crystal grow purple
+        for (auto& mobSpawner : mobSpawners) {
+			if (mobSpawner.IsDestroyed) continue;
+            posName = "lightPositions[" + std::to_string(lightCount) + "]";
+            colorName = "lightColors[" + std::to_string(lightCount) + "]";
+            ourShader.setVec3(colorName, glm::vec3(20.0f, 5.0f, 20.0f) * 20.0f);
+            ourShader.setVec3(posName, mobSpawner.Position + glm::vec3(0.0f, 10.5f, 0.0f));
+            if (&mobSpawner) mobSpawner.Draw(ourShader);
+            lightCount++;
+        }
+        //for (auto& mobSpawner : mobSpawners) if (&mobSpawner) mobSpawner.Draw(ourShader); //TODO: make crystal grow purple
+        ourShader.setInt("numLights", lightCount);
 
         AnimationShader.use();
         AnimationShader.setMat4("projection", projection);
