@@ -102,12 +102,6 @@ Standard *LearnOpenGL* stack:
 ```bash
    git clone [https://github.com/Besutodesuka/purge-the-land.git](https://github.com/Besutodesuka/purge-the-land.git)
 ```
-## Build
-1. Create build folder
-2. Open Cmake program
-3. Select this repository as source and the build folder as target
-4. Click on configure and then generate button
-5. Then you shall find the sln file in the build folder
 
 ## DEMO
-https://github.com/user-attachments/assets/e0b6b6db-e410-4548-a04f-9753b55e5d76
+[https://github.com/user-attachments/assets/e0b6b6db-e410-4548-a04f-9753b55e5d76](https://github.com/user-attachments/assets/b9efe0f6-42b8-4e61-9591-88623ad74ae1)
