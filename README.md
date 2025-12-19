@@ -9,14 +9,27 @@
 ## 1. Introduction
 
 ### Game Objective
+<img width="1572" height="812" alt="image" src="https://github.com/user-attachments/assets/f6b025d7-ce49-4bd5-8509-e3d7052e2711" />
+
 The land has been corrupted by the influence of **Dark Crystals**, which spawn monsters hostile to everything in their proximity. The player's duty is to destroy these crystals, defeat the skeleton guardians, and reclaim the land from corruption.
 
 ### Player Abilities & Mechanics
+<img width="786" height="235" alt="image" src="https://github.com/user-attachments/assets/7b1dc23f-e489-41bc-a969-97d1f1f4cca2" />
+
 The game features a combat system balancing offense and resource management:
 - **Charged Attack:** Hold **Left Click** to draw the bow. A **Yellow Power Bar** indicates charge level. Releasing shoots an arrow dealing damage based on power.
 - **Dash:** Press **Space Bar** to dash and evade attacks (Cooldown indicated by **Blue Bar**).
 - **Heal:** Press **E** to recover health (Cooldown indicated by **Red Plus Sign**).
 - **Camera:** Zoom in and out using the mouse scroll wheel.
+
+### Menu
+- When press Esc you will enter pause screen
+
+<img width="777" height="404" alt="image" src="https://github.com/user-attachments/assets/8c1db3de-c0b7-4acd-8ea5-10e42ef0d4e1" />
+
+- When Died or Won the game, there is 2 button retry or quit you can press retry to reset the game and enjoy it.
+
+<img width="690" height="370" alt="image" src="https://github.com/user-attachments/assets/115db9ba-b0c0-4996-9b30-4b518df97df1" />
 
 ### Controls
 | Key | Action |
@@ -82,19 +95,5 @@ Standard *LearnOpenGL* stack:
 - **Outcome:** The upgrade caused significant conflicts and bugs with existing legacy libraries in the project. We were forced to cancel the upgrade and revert to the previous version, continuing with standard texture mapping methods.
 
 ---
-
-# Installation & Build
-
-1. Clone the repository:
-```bash
-   git clone [https://github.com/Besutodesuka/purge-the-land.git](https://github.com/Besutodesuka/purge-the-land.git)
-```
-## Build
-1. Create build folder
-2. Open Cmake program
-3. Select this repository as source and the build folder as target
-4. Click on configure and then generate button
-5. Then you shall find the sln file in the build folder
-
-## DEMO
-https://github.com/user-attachments/assets/e0b6b6db-e410-4548-a04f-9753b55e5d76
+# DEMO
+[https://github.com/user-attachments/assets/e0b6b6db-e410-4548-a04f-9753b55e5d76](https://github.com/user-attachments/assets/b9efe0f6-42b8-4e61-9591-88623ad74ae1)
