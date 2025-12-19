@@ -7,6 +7,7 @@
 #include <string>
 #include <algorithm>
 #include <iostream>
+#include <filesystem> // Added for file checking
 
 #include <learnopengl/shader_m.h>
 #include <learnopengl/animator.h>        
@@ -57,13 +58,13 @@ public:
     float CurrentHealth;
     bool IsDead;
     float Speed;
-    
+
     // Physics
     const float GRAVITY = -9.8f;
     bool IsGrounded;
 
     // Death Logic
-    float DeathTimer;      
+    float DeathTimer;
     bool MarkedForDeletion;
     bool HasHit;
 
@@ -82,7 +83,7 @@ public:
 
     // Animation
     Animator* animator;
-    EnemyResources* resources; 
+    EnemyResources* resources;
     AnimState currentState;
 
     // Blending Variables
@@ -98,23 +99,26 @@ public:
         DeathTimer(0.0f), MarkedForDeletion(false), HasHit(false),
         blendAmount(1.0f), blendRate(2.0f), currentAnimPtr(nullptr), nextAnimPtr(nullptr)
     {
-        AttackRange = 1.2f; 
+        AttackRange = 1.2f;
         DetectionRange = 25.0f;
         AttackDamage = 15.0f;
-        AttackCooldown = 1.8f; 
+        AttackCooldown = 1.8f;
         CurrentCooldown = 0.0f;
 
-        // Initialize Animator
+        // Initialize Animator - SAFETY CHECK ADDED
         if (resources && resources->idleAnim) {
             nextAnimPtr = resources->idleAnim; // Start fully in idle
             currentAnimPtr = resources->idleAnim;
             animator = new Animator(nextAnimPtr);
             currentState = STATE_IDLE;
-        } else {
+        }
+        else {
+            // If idle anim failed to load, don't crash, just run without animation
+            std::cout << "WARNING: Enemy spawned without Idle Animation!" << std::endl;
             animator = nullptr;
             currentState = STATE_IDLE;
         }
-        
+
         InitCollider();
         UpdateOBB();
     }
@@ -136,7 +140,7 @@ public:
     void UpdateOBB() {
         Collider.center = Position + (localColliderCenter * Scale);
         Collider.halfExtents = localColliderExtents * Scale;
-        
+
         glm::mat4 rotationMatrix = glm::mat4(1.0f);
         rotationMatrix = glm::rotate(rotationMatrix, glm::radians(RotationY), glm::vec3(0.0f, 1.0f, 0.0f));
         glm::mat3 R = glm::mat3(rotationMatrix);
@@ -153,8 +157,11 @@ public:
             if (blendAmount < 1.0f) {
                 blendAmount += blendRate * deltaTime;
                 if (blendAmount > 1.0f) blendAmount = 1.0f;
-                
-                animator->PlayAnimation(currentAnimPtr, nextAnimPtr, animator->m_CurrentTime, 0.0f, blendAmount);
+
+                // Safety check for pointers before blending
+                if (currentAnimPtr && nextAnimPtr) {
+                    animator->PlayAnimation(currentAnimPtr, nextAnimPtr, animator->m_CurrentTime, 0.0f, blendAmount);
+                }
             }
         }
         UpdateFloatingText(deltaTime);
@@ -162,20 +169,21 @@ public:
         // --- DEATH LOGIC ---
         if (IsDead) {
             DeathTimer += deltaTime;
-            
+
             // 1. Calculate the exact duration of the death animation in seconds
             if (resources->dieAnim) {
                 float ticksPerSecond = resources->dieAnim->GetTicksPerSecond();
-                if (ticksPerSecond == 0.0f) ticksPerSecond = 25.0f; 
+                if (ticksPerSecond == 0.0f) ticksPerSecond = 25.0f;
                 float duration = resources->dieAnim->GetDuration() / ticksPerSecond;
 
                 // 2. If the timer exceeds duration, Mark for Deletion IMMEDIATELY
                 if (DeathTimer >= duration) {
                     MarkedForDeletion = true;
                 }
-            } else {
+            }
+            else {
                 // If no animation exists, delete instantly
-                MarkedForDeletion = true; 
+                MarkedForDeletion = true;
             }
             return; // Exit function so we don't move or attack
         }
@@ -193,7 +201,7 @@ public:
             float h = ground->getExactHeightAt(Position);
             if (h > -500.0f) floorHeight = h;
         }
-        
+
         if (Position.y < floorHeight) {
             Position.y = floorHeight;
             Velocity.y = 0.0f;
@@ -211,7 +219,7 @@ public:
 
         float dist = glm::distance(Position, player.Position);
         glm::vec3 dir = player.Position - Position;
-        dir.y = 0; 
+        dir.y = 0;
 
         if (glm::length(dir) > 0.1f) {
             dir = glm::normalize(dir);
@@ -225,18 +233,13 @@ public:
             SwitchState(STATE_ATTACK);
 
             if (animator) {
-                float tps = resources->attackAnim ? resources->attackAnim->GetTicksPerSecond() : 25.0f;
+                float tps = (resources->attackAnim) ? resources->attackAnim->GetTicksPerSecond() : 25.0f;
                 float hitTimeTicks = 1.2f * tps; // 1.2 second converted to ticks
 
-                // 1. Reset Hit Flag (Loop Detection)
-                // If the time is essentially at the start (e.g., < 0.5 seconds), 
-                // it means the animation has looped. We reset HasHit to allow a new attack.
                 if (animator->m_CurrentTime < hitTimeTicks * 0.1f) {
                     HasHit = false;
                 }
 
-                // 2. Deal Damage
-                // Only hits if we passed the 1.2s mark and haven't hit yet in this specific loop
                 if (animator->m_CurrentTime >= hitTimeTicks && !HasHit) {
                     player.TakeDamage(AttackDamage);
                     HasHit = true;
@@ -259,23 +262,27 @@ public:
 
     void SwitchState(AnimState newState) {
         if (currentState == newState) return;
-        
+
         // Determine the target animation
         Animation* target = nullptr;
+
+        // Safety: Ensure resources exist before accessing
+        if (!resources) return;
+
         switch (newState) {
-            case STATE_IDLE:   target = resources->idleAnim; break;
-            case STATE_CHASE:  target = resources->walkAnim; break;
-            case STATE_ATTACK: target = resources->attackAnim; break;
-            case STATE_DEAD:   target = resources->dieAnim; break;
+        case STATE_IDLE:   target = resources->idleAnim; break;
+        case STATE_CHASE:  target = resources->walkAnim; break;
+        case STATE_ATTACK: target = resources->attackAnim; break;
+        case STATE_DEAD:   target = resources->dieAnim; break;
         }
 
-        // If we have a valid change
+        // Only switch if the target animation actually exists (was loaded successfully)
         if (target && nextAnimPtr != target) {
             currentState = newState;
             currentAnimPtr = nextAnimPtr; // Old 'Next' becomes 'Current' (fade out)
             nextAnimPtr = target;         // New target (fade in)
             blendAmount = 0.0f;           // Start blend from 0
-            
+
             if (animator) animator->m_CurrentTime = 0.0f; // Reset animation time to 0
             if (newState == STATE_ATTACK) HasHit = false; // Reset attack flag
         }
@@ -345,7 +352,7 @@ public:
 
         float healthPct = std::max(0.0f, CurrentHealth / MaxHealth);
         glm::vec3 barPos = Position + glm::vec3(0.0f, Collider.halfExtents.y * 2.0f + 0.4f, 0.0f);
-        
+
         glm::mat4 model = glm::mat4(1.0f);
         model = glm::translate(model, barPos);
         model = glm::scale(model, glm::vec3(1.0f, 0.1f, 1.0f));
@@ -356,7 +363,7 @@ public:
 
         model = glm::mat4(1.0f);
         model = glm::translate(model, barPos + glm::vec3(0.0f, 0.0f, 0.01f));
-        model = glm::scale(model, glm::vec3(healthPct, 0.1f, 1.0f)); 
+        model = glm::scale(model, glm::vec3(healthPct, 0.1f, 1.0f));
         uiShader.setMat4("model", model);
         uiShader.setVec4("color", glm::vec4(0.0f, 1.0f, 0.0f, 1.0f));
         glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -369,7 +376,7 @@ public:
 // ==========================================
 class EnemyManager {
 public:
-    std::vector<Enemy*> enemies; 
+    std::vector<Enemy*> enemies;
     EnemyResources resources;
     TerrainCollider* groundRef;
 
@@ -379,21 +386,31 @@ public:
         resources.enemyModel = model;
         groundRef = ground;
 
-        try {
-            std::cout << "Loading Enemy Animations..." << std::endl;
-            // The requested animation paths
-            resources.idleAnim   = new Animation(FileSystem::getPath("resources/objects/enemy/Zombie Idle.dae"), model);
-            resources.walkAnim   = new Animation(FileSystem::getPath("resources/objects/enemy/Scary Clown Walk.dae"), model);
-            resources.attackAnim = new Animation(FileSystem::getPath("resources/objects/enemy/Standing Melee Attack Downward.dae"), model);
-            resources.dieAnim    = new Animation(FileSystem::getPath("resources/objects/enemy/Falling Back Death.dae"), model);
-        }
-        catch (std::exception& e) {
-            std::cout << "ERROR::ENEMY_MANAGER: " << e.what() << std::endl;
-        }
+        std::cout << "Loading Enemy Animations..." << std::endl;
+
+        // --- SAFE LOAD LAMBDA ---
+        // Prevents crashes by checking if the file exists before loading
+        auto SafeLoad = [&](const std::string& path) -> Animation* {
+            std::string fullPath = path;
+            if (!std::filesystem::exists(fullPath)) {
+                std::cout << "CRITICAL ERROR: Enemy Animation Missing: " << fullPath << std::endl;
+                return nullptr; // Returns NULL instead of crashing
+            }
+            std::cout << "Loading: " << path << std::endl;
+            return new Animation(fullPath, model);
+            };
+
+        // Load animations safely
+        resources.idleAnim = SafeLoad("resources/objects/enemy/Zombie Idle.dae");
+        resources.walkAnim = SafeLoad("resources/objects/enemy/Scary Clown Walk.dae");
+        resources.attackAnim = SafeLoad("resources/objects/enemy/Standing Melee Attack Downward.dae");
+        resources.dieAnim = SafeLoad("resources/objects/enemy/Falling Back Death.dae");
+
+        std::cout << "--- Enemy Animation Init Complete ---" << std::endl;
     }
 
     ~EnemyManager() {
-        Reset(); 
+        Reset();
         if (resources.idleAnim) delete resources.idleAnim;
         if (resources.walkAnim) delete resources.walkAnim;
         if (resources.attackAnim) delete resources.attackAnim;
@@ -414,9 +431,9 @@ public:
 
             // 1. Check if marked for deletion
             if (enemy->MarkedForDeletion) {
-                delete enemy;             
-                it = enemies.erase(it);   
-                continue;                 
+                delete enemy;
+                it = enemies.erase(it);
+                continue;
             }
 
             if (!enemy->IsDead) {
@@ -427,7 +444,7 @@ public:
                     if (TestOBBOBB(enemy->Collider, arrow.hitbox)) {
                         arrow.active = false;
                         float dmg = player.GetArrowDamage(arrow.velocity);
-                        enemy->TakeDamage(dmg); 
+                        enemy->TakeDamage(dmg);
                     }
                 }
             }
@@ -448,7 +465,7 @@ public:
     }
 
     const std::vector<Enemy*>& GetEnemies() const { return enemies; }
-    
+
     void Reset() {
         for (auto* enemy : enemies) {
             delete enemy;

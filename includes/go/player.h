@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <iostream>
 #include <string>
+#include <filesystem> // Added for file checking
 
 // Includes for Animation
 #include <learnopengl/shader_m.h>
@@ -21,13 +22,12 @@
 
 // Player physics constants
 const float GRAVITY = -9.8f;
-// const float JUMP_FORCE = 4.0f; // Removed
 const float PLAYER_SPEED = 4.0f;
 
 // --- DASH CONSTANTS ---
-const float DASH_SPEED = 15.0f;       
-const float DASH_DURATION = 0.25f;    
-const float DASH_COOLDOWN = 1.8f;     
+const float DASH_SPEED = 15.0f;
+const float DASH_DURATION = 0.25f;
+const float DASH_COOLDOWN = 1.8f;
 
 // --- HEAL CONSTANTS ---
 const float HEAL_COOLDOWN = 30.0f;
@@ -62,8 +62,8 @@ public:
     bool isShooting;
 
     // --- SKILL VARIABLES ---
-    float currentDashDuration; 
-    float currentDashCooldown; 
+    float currentDashDuration;
+    float currentDashCooldown;
     float currentHealCooldown;
 
     // Health Stats
@@ -131,7 +131,7 @@ public:
     {
         if (model == nullptr) {
             std::cerr << "CRITICAL ERROR: PlayerModel is NULL!" << std::endl;
-            throw std::runtime_error("PlayerModel cannot be null");
+            // Depending on your error handling, you might want to return or throw here
         }
 
         // Initialize Health
@@ -157,7 +157,7 @@ public:
         InitAnimations();
     }
 
-     void Reset() {
+    void Reset() {
         Position = startPosition;
         CurrentHealth = MaxHealth;
         IsDead = false;
@@ -170,29 +170,32 @@ public:
         currentDashDuration = 0.0f;
         currentDashCooldown = 0.0f;
         currentHealCooldown = 0.0f;
-        
+
         // Reset Animation
         charState = IDLE;
-        animator->PlayAnimation(idleAnimation, NULL, 0.0f, 0.0f, 0.0f);
-        
+        if (animator && idleAnimation) {
+            animator->PlayAnimation(idleAnimation, NULL, 0.0f, 0.0f, 0.0f);
+        }
+
         // Sync Physics
         SyncColliders();
     }
 
     // Destructor
     ~Player() {
-        delete animator;
-        delete idleAnimation;
-        delete walkForwardAnimation;
-        delete walkBackwardAnimation;
-        delete walkLeftAnimation;
-        delete walkRightAnimation;
-        delete aimIdleAnimation;
-        delete aimRecoilAnimation;
-        delete aimWalkForwardAnimation;
-        delete aimWalkBackwardAnimation;
-        delete aimWalkLeftAnimation;
-        delete aimWalkRightAnimation;
+        if (animator) delete animator;
+        // Check before deleting to avoid crashes if init failed
+        if (idleAnimation) delete idleAnimation;
+        if (walkForwardAnimation) delete walkForwardAnimation;
+        if (walkBackwardAnimation) delete walkBackwardAnimation;
+        if (walkLeftAnimation) delete walkLeftAnimation;
+        if (walkRightAnimation) delete walkRightAnimation;
+        if (aimIdleAnimation) delete aimIdleAnimation;
+        if (aimRecoilAnimation) delete aimRecoilAnimation;
+        if (aimWalkForwardAnimation) delete aimWalkForwardAnimation;
+        if (aimWalkBackwardAnimation) delete aimWalkBackwardAnimation;
+        if (aimWalkLeftAnimation) delete aimWalkLeftAnimation;
+        if (aimWalkRightAnimation) delete aimWalkRightAnimation;
     }
 
     // --- DAMAGE LOGIC ---
@@ -219,31 +222,54 @@ public:
 
     // --- INITIALIZATION ---
     void InitAnimations() {
-        // Standard Set (No Aim)
-        idleAnimation = new Animation(FileSystem::getPath("resources/objects/player/Idle.dae"), PlayerModel);
-        walkForwardAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Walk Forward.dae"), PlayerModel);
-        walkBackwardAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Walk Back.dae"), PlayerModel);
-        walkLeftAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Walk Left.dae"), PlayerModel);
-        walkRightAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Walk Right.dae"), PlayerModel);
+        std::cout << "--- Loading Player Animations ---" << std::endl;
+
+        // Helper Lambda to check file existence before loading
+        auto SafeLoad = [&](const std::string& path) -> Animation* {
+            std::string fullPath = path;
+            if (!std::filesystem::exists(fullPath)) {
+                std::cout << "CRITICAL ERROR: Animation Missing: " << fullPath << std::endl;
+                // You can return nullptr here, but your Animator might not like it.
+                // Best to ensure files exist.
+                return nullptr;
+            }
+            std::cout << "Loading: " << path << std::endl;
+            return new Animation(fullPath, PlayerModel);
+            };
+
+        // Standard Set
+        idleAnimation = SafeLoad("resources/objects/player/Idle.dae");
+        walkForwardAnimation = SafeLoad("resources/objects/player/Standing Walk Forward.dae");
+        walkBackwardAnimation = SafeLoad("resources/objects/player/Standing Walk Back.dae");
+        walkLeftAnimation = SafeLoad("resources/objects/player/Standing Walk Left.dae");
+        walkRightAnimation = SafeLoad("resources/objects/player/Standing Walk Right.dae");
 
         // Aiming Set
-        aimIdleAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Aim Idle 01.dae"), PlayerModel);
-        aimRecoilAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Aim Recoil.dae"), PlayerModel);
-        aimWalkForwardAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Aim Walk Forward.dae"), PlayerModel);
-        aimWalkBackwardAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Aim Walk Back.dae"), PlayerModel);
-        aimWalkLeftAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Aim Walk Left.dae"), PlayerModel);
-        aimWalkRightAnimation = new Animation(FileSystem::getPath("resources/objects/player/Standing Aim Walk Right.dae"), PlayerModel);
+        aimIdleAnimation = SafeLoad("resources/objects/player/Standing Aim Idle 01.dae");
+        aimRecoilAnimation = SafeLoad("resources/objects/player/Standing Aim Recoil.dae");
+        aimWalkForwardAnimation = SafeLoad("resources/objects/player/Standing Aim Walk Forward.dae");
+        aimWalkBackwardAnimation = SafeLoad("resources/objects/player/Standing Aim Walk Back.dae");
+        aimWalkLeftAnimation = SafeLoad("resources/objects/player/Standing Aim Walk Left.dae");
+        aimWalkRightAnimation = SafeLoad("resources/objects/player/Standing Aim Walk Right.dae");
 
-        animator = new Animator(idleAnimation);
+        if (idleAnimation) {
+            animator = new Animator(idleAnimation);
+        }
+        else {
+            std::cout << "FATAL: Idle Animation could not be loaded. Animator will fail." << std::endl;
+            animator = nullptr; // This will cause issues if not handled in Update
+        }
 
         charState = IDLE;
         blendAmount = 0.0f;
-        blendRate = 3.0f; 
+        blendRate = 3.0f;
 
         requestWalkForward = false;
         requestWalkBackward = false;
         requestWalkLeft = false;
         requestWalkRight = false;
+
+        std::cout << "--- Animation Init Complete ---" << std::endl;
     }
 
     // --- GETTERS & SETTERS ---
@@ -254,6 +280,9 @@ public:
 
     void SetGroundModel(Model* model) {
         if (!model) return;
+        // Check if meshes exist
+        if (model->meshes.empty()) return;
+
         std::vector<Vertex> myLoadedVertices = model->meshes[0].vertices;
         std::vector<glm::vec3> collisionPositions;
         collisionPositions.reserve(myLoadedVertices.size());
@@ -296,7 +325,9 @@ public:
             FireArrow();
             charState = SHOOTING_RECOIL;
             recoilTimer = 0.0f;
-            animator->PlayAnimation(aimRecoilAnimation, NULL, 0.0f, 0.0f, 0.0f);
+            if (animator && aimRecoilAnimation) {
+                animator->PlayAnimation(aimRecoilAnimation, NULL, 0.0f, 0.0f, 0.0f);
+            }
             power = min_power;
             isAiming = false;
         }
@@ -305,7 +336,7 @@ public:
     void FireArrow() {
         // 1. Get Forward Direction (Flat)
         glm::vec3 flatDir = glm::normalize(glm::vec3(ShootDirection.x, 0.0f, ShootDirection.z));
-        
+
         // 2. Calculate Right Direction (Cross Product: Forward x Up)
         glm::vec3 rightDir = glm::normalize(glm::cross(flatDir, glm::vec3(0.0f, 1.0f, 0.0f)));
 
@@ -315,9 +346,9 @@ public:
         launchDir = glm::normalize(launchDir);
 
         // --- POSITION SETTINGS (TWEAK THESE) ---
-        float heightOffset  = AABBSize.y * 0.80f; // 0.75 = Chest/Shoulder height
+        float heightOffset = AABBSize.y * 0.80f; // 0.75 = Chest/Shoulder height
         float forwardOffset = 0.8f;               // How far in front of player
-        float sideOffset    = 0.1f;               // + is Right, - is Left
+        float sideOffset = 0.1f;               // + is Right, - is Left
 
         // 4. Calculate Final Spawn Position
         glm::vec3 spawnPos = Position;
@@ -334,10 +365,10 @@ public:
     // Calculate damage based on arrow velocity
     float GetArrowDamage(const glm::vec3& arrowVelocity) {
         float speed = glm::length(arrowVelocity);
-        
+
         // Reconstruct power from speed (Velocity was calculated as direction * power * 5.0f)
-        float estimatedPower = speed / 5.0f; 
-        
+        float estimatedPower = speed / 5.0f;
+
         // Ensure we stay within bounds
         estimatedPower = std::clamp(estimatedPower, min_power, max_power);
 
@@ -361,10 +392,11 @@ public:
             moveDirection = glm::normalize(moveDirection);
             Velocity.x = moveDirection.x * velocity; Velocity.z = moveDirection.z * velocity;
             if (!isAiming) RotationY = glm::degrees(atan2(moveDirection.x, moveDirection.z));
-        } else { Velocity.x = 0.0f; Velocity.z = 0.0f; }
+        }
+        else { Velocity.x = 0.0f; Velocity.z = 0.0f; }
     }
 
-     void Dash() {
+    void Dash() {
         if (currentDashCooldown <= 0.0f && !isAiming) {
             float angleRad = glm::radians(RotationY);
             glm::vec3 dashDir;
@@ -403,14 +435,14 @@ public:
                     // Simple collision resolution
                     Position.x -= Velocity.x * deltaTime;
                     Position.z -= Velocity.z * deltaTime;
-                    
+
                     // Stop dash on wall hit
                     if (currentDashDuration > 0.0f) {
                         currentDashDuration = 0.0f;
                         Velocity.x = 0;
                         Velocity.z = 0;
                     }
-                    
+
                     SyncColliders();
                     break;
                 }
@@ -422,6 +454,8 @@ public:
 
     // --- ANIMATION STATE MACHINE (RESTORED) ---
     void UpdateAnimationLogic(float deltaTime) {
+        if (!animator) return; // Safety Check
+
         animator->UpdateAnimation(deltaTime);
 
         Animation* targetIdle = isAiming ? aimIdleAnimation : idleAnimation;
@@ -430,10 +464,13 @@ public:
         Animation* targetLeft = isAiming ? aimWalkLeftAnimation : walkLeftAnimation;
         Animation* targetRight = isAiming ? aimWalkRightAnimation : walkRightAnimation;
 
+        // Safety: Ensure these exist
+        if (!targetIdle || !targetFwd) return;
+
         switch (charState) {
         case SHOOTING_RECOIL:
             recoilTimer += deltaTime;
-            {
+            if (aimRecoilAnimation) {
                 float tps = aimRecoilAnimation->GetTicksPerSecond();
                 if (tps == 0.0f) tps = 25.0f;
                 float durationInSeconds = aimRecoilAnimation->GetDuration() / tps;
@@ -657,6 +694,8 @@ public:
     }
 
     void Draw(Shader& shader, bool flip = true) {
+        if (!animator) return; // Don't draw if animator failed
+
         auto transforms = animator->GetFinalBoneMatrices();
         for (int i = 0; i < transforms.size(); ++i) {
             shader.setMat4("finalBonesMatrices[" + std::to_string(i) + "]", transforms[i]);
@@ -681,7 +720,7 @@ public:
 
 private:
     glm::vec3 startPosition;
-    
+
     void ApplyGravity(float deltaTime) {
         if (!IsGrounded) {
             Velocity.y += GRAVITY * deltaTime;
